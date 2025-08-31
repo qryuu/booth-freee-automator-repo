@@ -20,14 +20,16 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Solution ★★★
-# OSのベースイメージにプリインストールされているcurl-minimalと競合するため、
-# ここでは`tar`のみをインストールします。
+# Lambdaでの動作が確認されているChromiumバイナリを直接ダウンロードして使用します。
 RUN dnf install -y tar && \
     # Lambda互換のChromiumバイナリをダウンロードします。
     curl -Lo /tmp/chromium.tar "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar" && \
     # /opt ディレクトリに展開します。
     tar -xvf /tmp/chromium.tar -C /opt && \
-    # 不要なファイルを削除します。
+    # 展開されたディレクトリ内の実行ファイルを正しいパスに移動させます。
+    mv /opt/pack/chromium /opt/chromium && \
+    # 不要なディレクトリとファイルを削除します。
+    rm -rf /opt/pack && \
     rm /tmp/chromium.tar && \
     # 不要なキャッシュをクリーンアップします。
     dnf clean all
