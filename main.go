@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.comcom/chromedp/chromedp"
+	"github.com/chromedp/chromedp"
 )
 
 // HandleRequest is the main entry point for the Lambda function.
@@ -28,10 +28,8 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("window-size", "1920,1080"),
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
 
-		// ★★★
 		// The Final Fix: Explicitly set all temporary directories to /tmp,
 		// the only writable path in the Lambda environment.
-		// ★★★
 		chromedp.Flag("user-data-dir", "/tmp/user-data"),
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
