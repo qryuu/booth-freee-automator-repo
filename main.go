@@ -28,17 +28,19 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
-		// Enable verbose logging to capture Chrome's stderr.
-		chromedp.Debugf(log.Printf),
 	)
 
 	// Create a new context with the allocator options.
-	// It's important to have a separate cancel function for the allocator.
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
-	// Create a new chromedp context.
-	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
+	// ★★★ 最終修正 ★★★
+	// Create a new chromedp context WITH the debug logger enabled.
+	// This is the correct way to enable verbose logging.
+	taskCtx, cancelTask := chromedp.NewContext(
+		allocCtx,
+		chromedp.WithDebugf(log.Printf),
+	)
 	defer cancelTask()
 
 	// Navigate to Google and get the page title.
