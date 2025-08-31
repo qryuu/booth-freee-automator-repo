@@ -16,6 +16,7 @@ func HandleRequest(ctx context.Context) (string, error) {
 	// Set up options for headless Chrome execution in Lambda.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath("/opt/google/chrome/google-chrome"),
+		// Base flags for Lambda
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-gpu", true),
@@ -24,26 +25,31 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("disable-setuid-sandbox", true),
 		chromedp.Flag("window-size", "1920,1080"),
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
+
+		// Writable directories
 		chromedp.Flag("user-data-dir", "/tmp/user-data"),
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
 
-		// ★★★ The Final Fix ★★★
-		// Disables the Zygote process for spawning renderers, which is a common
-		// source of crashes in minimal container environments like Lambda.
+		// Process management
 		chromedp.Flag("disable-zygote", true),
+
+		// ★★★ The Final Fix ★★★
+		// Disable unnecessary background tasks and extensions that can cause hangs.
+		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("disable-background-networking", true),
+		chromedp.Flag("disable-sync", true),
+		chromedp.Flag("no-first-run", true),
+		chromedp.Flag("safebrowsing-disable-auto-update", true),
 	)
 
 	// Create a new context with the allocator options.
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
-	// Create a new chromedp context with logging enabled for debugging.
-	taskCtx, cancelTask := chromedp.NewContext(
-		allocCtx,
-		chromedp.WithDebugf(log.Printf),
-	)
+	// Create a new chromedp context. No need for debug logging anymore.
+	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
 	defer cancelTask()
 
 	// Navigate to Google and get the page title.
