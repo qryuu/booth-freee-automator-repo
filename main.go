@@ -28,14 +28,12 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
-
-		// ★★★ 最終診断 ★★★
-		// Chromeプロセス自体の標準エラー出力をLambdaのログにリダイレクトします。
-		// これにより、Chromeがクラッシュした際の直接的な原因が出力されるはずです。
+		// Enable verbose logging to capture Chrome's stderr.
 		chromedp.Debugf(log.Printf),
 	)
 
 	// Create a new context with the allocator options.
+	// It's important to have a separate cancel function for the allocator.
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
