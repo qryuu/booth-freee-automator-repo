@@ -10,11 +10,12 @@ phases:
       - echo Build started on `date`
       - echo Building the Docker image...
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/booth-freee-automator
-      # 最終診断版のイメージタグを設定します。
-      - IMAGE_TAG=v18.0-logfix
+      # 最終修正版のイメージタグを設定します。
+      - IMAGE_TAG=v19.0-no-zygote
       - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker image...
       - docker push $REPOSITORY_URI:$IMAGE_TAG
+

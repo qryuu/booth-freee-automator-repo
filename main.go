@@ -28,15 +28,18 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
+
+		// ★★★ The Final Fix ★★★
+		// Disables the Zygote process for spawning renderers, which is a common
+		// source of crashes in minimal container environments like Lambda.
+		chromedp.Flag("disable-zygote", true),
 	)
 
 	// Create a new context with the allocator options.
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
-	// ★★★ 最終修正 ★★★
-	// Create a new chromedp context WITH the debug logger enabled.
-	// This is the correct way to enable verbose logging.
+	// Create a new chromedp context with logging enabled for debugging.
 	taskCtx, cancelTask := chromedp.NewContext(
 		allocCtx,
 		chromedp.WithDebugf(log.Printf),
