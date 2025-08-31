@@ -12,8 +12,8 @@ phases:
       - echo Building the Docker image...
       # ECRリポジトリのURIを環境変数に設定します。
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/booth-freee-automator
-      # DNS修正版の新しいイメージタグを設定します。
-      - IMAGE_TAG=v10.0-dnsfix
+      # 最終版のイメージタグを設定します。
+      - IMAGE_TAG=v11.0-final
       # Dockerイメージをビルドします。
       - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
   post_build:

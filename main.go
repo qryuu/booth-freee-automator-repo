@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/chromedp/chromedp"
+	"github.comcom/chromedp/chromedp"
 )
 
 // HandleRequest is the main entry point for the Lambda function.
@@ -18,19 +18,24 @@ func HandleRequest(ctx context.Context) (string, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		// The official Google Chrome RPM installs the binary here.
 		chromedp.ExecPath("/opt/google/chrome/google-chrome"),
+		// Base flags for Lambda
 		chromedp.Flag("headless", true),
-		chromedp.Flag("no-sandbox", true), // Most important flag for Lambda
+		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-dev-shm-usage", true), // /dev/shm is limited in Lambda
-		chromedp.Flag("single-process", true),       // Helps in resource-constrained environments
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("single-process", true),
 		chromedp.Flag("disable-setuid-sandbox", true),
 		chromedp.Flag("window-size", "1920,1080"),
-		// Using a common user agent can help avoid bot detection.
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
+
 		// ★★★
-		// The key fix: Explicitly set a public DNS server to resolve network issues in the Lambda environment.
+		// The Final Fix: Explicitly set all temporary directories to /tmp,
+		// the only writable path in the Lambda environment.
 		// ★★★
-		chromedp.Flag("dns-server", "8.8.8.8"),
+		chromedp.Flag("user-data-dir", "/tmp/user-data"),
+		chromedp.Flag("data-path", "/tmp/data-path"),
+		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
+		chromedp.Flag("homedir", "/tmp"),
 	)
 
 	// Create a new context with the allocator options.
