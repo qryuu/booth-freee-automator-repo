@@ -28,20 +28,19 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
+
+		// ★★★ 最終診断 ★★★
+		// Chromeプロセス自体の標準エラー出力をLambdaのログにリダイレクトします。
+		// これにより、Chromeがクラッシュした際の直接的な原因が出力されるはずです。
+		chromedp.Debugf(log.Printf),
 	)
 
 	// Create a new context with the allocator options.
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
-	// ★★★
-	// The key change: Enable verbose logging to diagnose the crash.
-	// We will now see detailed browser communication in the CloudWatch logs.
-	// ★★★
-	taskCtx, cancelTask := chromedp.NewContext(
-		allocCtx,
-		chromedp.WithLogf(log.Printf),
-	)
+	// Create a new chromedp context.
+	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
 	defer cancelTask()
 
 	// Navigate to Google and get the page title.
