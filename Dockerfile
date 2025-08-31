@@ -1,43 +1,42 @@
-# ==================================================================================================
-# 【重要】最終版・クラウドビルド用Dockerfile (2025/08/31更新)
-# ==================================================================================================
-# 目的：AWS CodeBuild上で動作させることを前提とした、最も確実なDockerfileです。
-# 手法：Amazon Linux 2023をベースに、Google公式リポジトリからChromeを直接インストールします。
-# これにより、OSのパッケージリストに依存せず、常に安定したビルドを実現します。
-# ==================================================================================================
+# このDockerfileは、AWS CodeBuildで実行することを前提としています。
+# ------------------------------------------------------------------------------
+# 最終コマンド (PowerShellから実行):
+# docker buildx build --platform linux/amd64 -t YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/booth-freee-automator:v8.0-cloudbuild --push .
+# ------------------------------------------------------------------------------
 
-# ===== ステージ1: ビルド環境 =====
-# AWSが提供する、Amazon Linux 2023ベースのLambda実行用公式イメージを使用します。
-# このイメージにはビルドに必要なツールも含まれています。
+# --- ステージ1: ビルド環境 ---
+# Amazon Linux 2023をベースに、Go言語とGitをインストールします。
 FROM public.ecr.aws/lambda/provided:al2023 as builder
 
-# Go言語とGitをインストール
+# GoとGitをインストール
 RUN dnf install -y golang git
 
+# アプリケーションのソースコードをコピー
 WORKDIR /app
 COPY main.go .
 
-# 依存関係をダウンロードし、ビルド
+# 依存関係をダウンロードし、ビルドを実行
 RUN go mod init main && \
     go get github.com/chromedp/chromedp && \
     go get github.com/aws/aws-lambda-go/lambda
 RUN go build -o bootstrap main.go
 
 
-# ===== ステージ2: 実行環境 =====
-# AWSが提供する、Amazon Linux 2023ベースのLambda実行用公式イメージを使用します
+# --- ステージ2: 実行環境 ---
+# Lambdaの実行に必要な最小限の環境を作成します。
 FROM public.ecr.aws/lambda/provided:al2023
 
 # Google Chromeの公式リポジトリ設定を直接書き込みます。
-# これにより、ネットワークの状態に左右されず、常に安定してリポジトリを追加できます。
+# これにより、ネットワークの状態に左右されず、安定してインストールできます。
 RUN printf "[google-chrome]\nname=google-chrome\nbaseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=https://dl.google.com/linux/linux_signing_key.pub" > /etc/yum.repos.d/google-chrome.repo
 
-# Google Chrome（安定版）と日本語フォントをインストールします。
-RUN dnf install -y google-chrome-stable liberation-sans-fonts && \
+# パッケージリストを更新してから、Chromeとフォントをインストールします。
+# これにより、パッケージの依存関係の問題やロックの競合を防ぎます。
+RUN dnf update -y && \
+    dnf install -y google-chrome-stable liberation-sans-fonts && \
     dnf clean all
 
-# ビルドステージで作成した実行可能ファイル`bootstrap`をコピー
-# LambdaのGoランタイムは /var/runtime/bootstrap を期待します
+# ビルドステージからコンパイル済みのGoプログラムをコピー
 COPY --from=builder /app/bootstrap /var/runtime/
 
 # Lambdaが実行するコマンドを設定
