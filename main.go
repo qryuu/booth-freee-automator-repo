@@ -27,6 +27,10 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("window-size", "1920,1080"),
 		// Using a common user agent can help avoid bot detection.
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
+		// ★★★
+		// The key fix: Explicitly set a public DNS server to resolve network issues in the Lambda environment.
+		// ★★★
+		chromedp.Flag("dns-server", "8.8.8.8"),
 	)
 
 	// Create a new context with the allocator options.
