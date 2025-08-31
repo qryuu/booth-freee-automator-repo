@@ -14,11 +14,12 @@ import (
 func HandleRequest(requestCtx context.Context) (string, error) {
 	log.Printf("Lambda function started")
 
-	// Create a new context with a generous timeout to handle cold starts.
-	mainCtx, cancel := context.withTimeout(requestCtx, 80*time.Second)
+	// Create a new context with a generous timeout. This will be the master context for the entire operation.
+	// This ensures that even on a very slow cold start, chromedp has enough time to initialize Chrome.
+	// The timeout is set to be slightly less than the Lambda function's overall timeout.
+	mainCtx, cancel := context.WithTimeout(requestCtx, 80*time.Second)
 	defer cancel()
 
-	// ★★★ The Final Solution ★★★
 	// Use a known-good, pre-compiled Chromium binary specifically for AWS Lambda.
 	// All other flags are set for maximum compatibility in this environment.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
