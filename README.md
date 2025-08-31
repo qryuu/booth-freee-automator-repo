@@ -1,0 +1,1 @@
+# booth-freee-automator-repo
