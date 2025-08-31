@@ -4,37 +4,45 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
-	"github.com/aws/aws-lambda-go/lambda" // "github.comcom"から正しいパスに修正
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/chromedp/chromedp"
 )
 
+// HandleRequest is the main entry point for the Lambda function.
 func HandleRequest(ctx context.Context) (string, error) {
-	// ログにタイムスタンプを出力
-	log.Printf("Lambda function started at %s", time.Now())
+	log.Printf("Lambda function started")
 
-	// chromedpのオプションを設定
-	// Lambda環境では、ヘッドレスモード、サンドボックス無効化、共有メモリ無効化が推奨されます。
+	// Set up options for headless Chrome execution in Lambda.
+	// These flags are crucial for running in a containerized, headless environment.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		// The official Google Chrome RPM installs the binary here.
+		chromedp.ExecPath("/opt/google/chrome/google-chrome"),
 		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true), // Most important flag for Lambda
 		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-software-rasterizer", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.ExecPath("/opt/google/chrome/chrome"), // Google Chromeの実行パスを指定
+		chromedp.Flag("disable-dev-shm-usage", true), // /dev/shm is limited in Lambda
+		chromedp.Flag("single-process", true),       // Helps in resource-constrained environments
+		chromedp.Flag("disable-setuid-sandbox", true),
+		chromedp.Flag("window-size", "1920,1080"),
+		// Using a common user agent can help avoid bot detection.
+		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
 	)
 
+	// Create a new context with the allocator options.
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
-	taskCtx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
+	// Create a new chromedp context.
+	taskCtx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	var pageTitle string
+	// Navigate to Google and get the page title.
+	var title string
+	log.Println("Navigating to Google...")
 	err := chromedp.Run(taskCtx,
 		chromedp.Navigate(`https://www.google.com`),
-		chromedp.Title(&pageTitle),
+		chromedp.Title(&title),
 	)
 
 	if err != nil {
@@ -42,8 +50,8 @@ func HandleRequest(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to navigate and get title: %w", err)
 	}
 
-	log.Printf("Successfully navigated to Google. Page title: %s", pageTitle)
-	return fmt.Sprintf("Successfully got title: %s", pageTitle), nil
+	log.Printf("Successfully navigated to Google. Page title: %s", title)
+	return fmt.Sprintf("Successfully got title: %s", title), nil
 }
 
 func main() {

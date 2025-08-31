@@ -4,16 +4,22 @@ phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
+      # ECRにログインします。AWS_ACCOUNT_IDはCodeBuildの環境変数から取得します。
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
+      # ECRリポジトリのURIを環境変数に設定します。
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/booth-freee-automator
-      - IMAGE_TAG=v8.0-cloudbuild
+      # 最終版のイメージタグを設定します。
+      - IMAGE_TAG=v9.0-final
+      # Dockerイメージをビルドします。
       - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker image...
+      # ビルドしたDockerイメージをECRにプッシュします。
       - docker push $REPOSITORY_URI:$IMAGE_TAG
+
