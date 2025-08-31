@@ -14,11 +14,8 @@ func HandleRequest(ctx context.Context) (string, error) {
 	log.Printf("Lambda function started")
 
 	// Set up options for headless Chrome execution in Lambda.
-	// These flags are crucial for running in a containerized, headless environment.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		// The official Google Chrome RPM installs the binary here.
 		chromedp.ExecPath("/opt/google/chrome/google-chrome"),
-		// Base flags for Lambda
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-gpu", true),
@@ -27,9 +24,6 @@ func HandleRequest(ctx context.Context) (string, error) {
 		chromedp.Flag("disable-setuid-sandbox", true),
 		chromedp.Flag("window-size", "1920,1080"),
 		chromedp.Flag("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"),
-
-		// The Final Fix: Explicitly set all temporary directories to /tmp,
-		// the only writable path in the Lambda environment.
 		chromedp.Flag("user-data-dir", "/tmp/user-data"),
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
@@ -37,12 +31,18 @@ func HandleRequest(ctx context.Context) (string, error) {
 	)
 
 	// Create a new context with the allocator options.
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancelAlloc()
 
-	// Create a new chromedp context.
-	taskCtx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
+	// ★★★
+	// The key change: Enable verbose logging to diagnose the crash.
+	// We will now see detailed browser communication in the CloudWatch logs.
+	// ★★★
+	taskCtx, cancelTask := chromedp.NewContext(
+		allocCtx,
+		chromedp.WithLogf(log.Printf),
+	)
+	defer cancelTask()
 
 	// Navigate to Google and get the page title.
 	var title string
