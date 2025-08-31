@@ -20,17 +20,11 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Solution ★★★
-# Lambdaでの動作が確認されているChromiumバイナリを直接ダウンロードして使用します。
-RUN dnf install -y tar && \
-    # Lambda互換のChromiumバイナリをダウンロードします。
-    curl -Lo /tmp/chromium.tar "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar" && \
-    # /opt ディレクトリに展開します。
-    tar -xvf /tmp/chromium.tar -C /opt && \
-    # 展開されたディレクトリ内の実行ファイルを正しいパスに移動させます。
-    mv /opt/pack/chromium /opt/chromium && \
-    # 不要なディレクトリとファイルを削除します。
-    rm -rf /opt/pack && \
-    rm /tmp/chromium.tar && \
+# OSのパッケージ管理システムに依存するのをやめ、Lambdaでの動作が確認されている
+# Amazon Linux 2023専用のChromiumバイナリを直接ダウンロードして使用します。
+RUN dnf install -y brotli && \
+    # 正しい、単一のパッケージをダウンロード、解凍、展開します。
+    curl -Ls "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" | brotli -d | tar -x -C /opt/ && \
     # 不要なキャッシュをクリーンアップします。
     dnf clean all
 
