@@ -35,8 +35,7 @@ func HandleRequest(ctx context.Context) (string, error) {
 		// Process management
 		chromedp.Flag("disable-zygote", true),
 
-		// ★★★ The Final Fix ★★★
-		// Disable unnecessary background tasks and extensions that can cause hangs.
+		// Disable unnecessary background tasks
 		chromedp.Flag("disable-extensions", true),
 		chromedp.Flag("disable-background-networking", true),
 		chromedp.Flag("disable-sync", true),
@@ -48,8 +47,12 @@ func HandleRequest(ctx context.Context) (string, error) {
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
 
-	// Create a new chromedp context. No need for debug logging anymore.
-	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
+	// ★★★ 最終診断 ★★★
+	// Re-enable verbose logging to capture Chrome's startup messages and potential crash logs.
+	taskCtx, cancelTask := chromedp.NewContext(
+		allocCtx,
+		chromedp.WithDebugf(log.Printf),
+	)
 	defer cancelTask()
 
 	// Navigate to Google and get the page title.
