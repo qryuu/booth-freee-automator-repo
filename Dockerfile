@@ -20,10 +20,9 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Solution ★★★
-# OSのパッケージ管理システムに依存するのをやめ、Lambdaでの動作が確認されている
-# Chromiumのバイナリを直接ダウンロードして使用します。
-# 必要なツール（curl, tar）をインストールします。
-RUN dnf install -y curl tar && \
+# OSのベースイメージにプリインストールされているcurl-minimalと競合するため、
+# ここでは`tar`のみをインストールします。
+RUN dnf install -y tar && \
     # Lambda互換のChromiumバイナリをダウンロードします。
     curl -Lo /tmp/chromium.tar "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar" && \
     # /opt ディレクトリに展開します。
