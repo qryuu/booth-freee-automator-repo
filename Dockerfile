@@ -25,7 +25,7 @@ RUN dnf install -y brotli tar wget && \
     # 最新のChromiumパックファイルをダウンロードします。
     wget "https://github.com/Sparticuz/chromium/releases/download/v138.0.2/chromium-v138.0.2-pack.x64.tar" -O /tmp/chromium-pack.tar && \
     # ダウンロードしたファイルのハッシュ値を検証し、破損していないことを保証します。
-    echo "b0453e00e00f3e6a98218e7e1694eb38e079dd21c83c261e3d3609804a370e7e  /tmp/chromium-pack.tar" | sha256sum -c - && \
+    echo "e5f585913e2f5b3318b76063e5e40e2b96e952771b3e8e7a04a601e3e7a00f49  /tmp/chromium-pack.tar" | sha256sum -c - && \
     # 一時ディレクトリを作成し、パックファイルを展開します。
     mkdir /tmp/pack-contents && \
     tar -xvf /tmp/chromium-pack.tar -C /tmp/pack-contents && \
