@@ -4,6 +4,10 @@ phases:
   build:
     commands:
       - echo Build started on `date`
+      - echo Initializing Go modules and downloading dependencies...
+      # Goモジュールを初期化し、main.goでimportされているライブラリをダウンロードします。
+      - go mod init main
+      - go mod tidy
       - echo Compiling the Go code...
       # GoプログラムをLambdaで実行可能な形式にビルドします。
       - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap main.go
