@@ -30,11 +30,6 @@ func HandleRequest(requestCtx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
-		chromedp.Flag("disable-zygote", true),
-		chromedp.Flag("disable-extensions", true),
-		chromedp.Flag("disable-background-networking", true),
-		chromedp.Flag("disable-sync", true),
-		chromedp.Flag("no-first-run", true),
 	)
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(mainCtx, opts...)
