@@ -1,10 +1,7 @@
-# Go build artifacts
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-bootstrap
+# Dependencies
+node_modules/
+
+# Build artifacts
 deployment.zip
 
 # OS-specific files

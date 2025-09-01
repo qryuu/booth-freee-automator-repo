@@ -3,18 +3,21 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      golang: 1.24
+      # Specify the Node.js version.
+      nodejs: 20
+  pre_build:
+    commands:
+      - echo Installing dependencies...
+      # Install dependencies defined in package.json.
+      - npm install
   build:
     commands:
       - echo Build started on `date`
-      - echo Initializing Go modules and downloading dependencies...
-      - go mod init main
-      - go mod tidy
-      - echo Compiling the Go code...
-      - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap main.go
-      - echo Zipping the binary...
-      - zip deployment.zip bootstrap
+      - echo Zipping deployment package...
+      # Zip the source code and installed dependencies.
+      - zip -r deployment.zip .
+
+# Specify the output artifact.
 artifacts:
   files:
     - deployment.zip
-
