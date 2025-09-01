@@ -3,21 +3,17 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      # Specify the Node.js version.
       nodejs: 20
   pre_build:
     commands:
       - echo Installing dependencies...
-      # Install dependencies defined in package.json.
       - npm install
   build:
     commands:
       - echo Build started on `date`
       - echo Zipping deployment package...
-      # Zip the source code and installed dependencies.
       - zip -r deployment.zip .
-
-# Specify the output artifact.
 artifacts:
   files:
     - deployment.zip
+
