@@ -14,22 +14,18 @@ import (
 func HandleRequest(requestCtx context.Context) (string, error) {
 	log.Printf("Lambda function started")
 
-	// Create a new context with a generous timeout. This will be the master context for the entire operation.
-	// This ensures that even on a very slow cold start, chromedp has enough time to initialize Chrome.
-	// The timeout is set to be slightly less than the Lambda function's overall timeout.
+	// Create a new context with a generous timeout.
 	mainCtx, cancel := context.WithTimeout(requestCtx, 80*time.Second)
 	defer cancel()
 
-	// Use a known-good, pre-compiled Chromium binary specifically for AWS Lambda.
-	// All other flags are set for maximum compatibility in this environment.
+	// Set up options for headless Chrome execution in Lambda.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.ExecPath("/opt/chromium"),
+		chromedp.ExecPath("/opt/headless-chromium"), // The path inside the container
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("single-process", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("single-process", true),
-		chromedp.Flag("disable-setuid-sandbox", true),
 		chromedp.Flag("user-data-dir", "/tmp/user-data"),
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
