@@ -20,10 +20,10 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Definitive Solution ★★★
-# 必要なツール（brotli, tar）をインストールします。
-RUN dnf install -y brotli tar && \
-    # Lambdaでの動作が確認されているAmazon Linux 2023専用のChromiumバイナリをダウンロードします。
-    curl -Ls "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" -o /tmp/chromium.tar.br && \
+# 必要なツール（brotli, tar, wget）をインストールします。
+RUN dnf install -y brotli tar wget && \
+    # wgetを使用して、より堅牢な方法でChromiumバイナリをダウンロードします。
+    wget "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" -O /tmp/chromium.tar.br && \
     # 一時ファイルに解凍します。
     brotli -d /tmp/chromium.tar.br -o /tmp/chromium.tar && \
     # 解凍したtarファイルを展開します。
