@@ -19,9 +19,10 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 # -------------------------------------------------------------------------------------
 FROM public.ecr.aws/lambda/provided:al2023
 
-# ★★★ The Final Solution (from blog post) ★★★
-# 必要なツールをインストールします。
-RUN dnf install -y curl bzip2 && \
+# ★★★ The Final Solution ★★★
+# ベースイメージにはcurl-minimalがプリインストールされているため、
+# 競合を避けるためにbzip2のみをインストールします。
+RUN dnf install -y bzip2 && \
     # Lambda互換のChromiumバイナリ（bz2形式）をダウンロードします。
     curl -L https://github.com/shelfio/chrome-aws-lambda-layer/releases/download/v33/headless-chromium.tar.bz2 -o /tmp/chromium.tar.bz2 && \
     # /opt ディレクトリに正しく解凍します。
