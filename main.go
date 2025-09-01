@@ -21,7 +21,7 @@ func HandleRequest(requestCtx context.Context) (string, error) {
 	// Set up options for headless Chrome execution in Lambda.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		// ★★★ Final Path Fix ★★★
-		// Use the standard path for pre-built Lambda binaries.
+		// Use the standard path for the shelfio pre-built binary.
 		chromedp.ExecPath("/opt/headless-chromium"),
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
@@ -32,11 +32,6 @@ func HandleRequest(requestCtx context.Context) (string, error) {
 		chromedp.Flag("data-path", "/tmp/data-path"),
 		chromedp.Flag("disk-cache-dir", "/tmp/cache-dir"),
 		chromedp.Flag("homedir", "/tmp"),
-		chromedp.Flag("disable-zygote", true),
-		chromedp.Flag("disable-extensions", true),
-		chromedp.Flag("disable-background-networking", true),
-		chromedp.Flag("disable-sync", true),
-		chromedp.Flag("no-first-run", true),
 	)
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(mainCtx, opts...)

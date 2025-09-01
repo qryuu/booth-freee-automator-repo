@@ -19,15 +19,18 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 # -------------------------------------------------------------------------------------
 FROM public.ecr.aws/lambda/provided:al2023
 
-# ★★★ The Final Definitive Solution ★★★
-# 必要なツール（unzip, wget）をインストールします。
-RUN dnf install -y unzip wget && \
-    # Lambdaでの動作が確認されている最新のChromiumバイナリ（zip形式）をダウンロードします。
-    wget "https://github.com/Sparticuz/chromium/releases/download/v138.0.2/chromium-v138.0.2-layer.x64.zip" -O /tmp/chromium.zip && \
-    # /opt ディレクトリに展開します。
-    unzip /tmp/chromium.zip -d /opt/ && \
+# ★★★ The Final Definitive Solution (thanks to your research!) ★★★
+# 必要なツール（brotli, tar, wget）をインストールします。
+RUN dnf install -y brotli tar wget && \
+    # 最新のChromiumパックファイルをダウンロードします。
+    wget "https://github.com/Sparticuz/chromium/releases/download/v138.0.2/chromium-v138.0.2-pack.x64.tar" -O /tmp/chromium-pack.tar && \
+    # 一時ディレクトリを作成し、パックファイルを展開します。
+    mkdir /tmp/pack-contents && \
+    tar -xvf /tmp/chromium-pack.tar -C /tmp/pack-contents && \
+    # パックの中からAmazon Linux 2023用のバイナリを展開します。
+    brotli -d /tmp/pack-contents/al2023.tar.br | tar -x -C /opt/ && \
     # 不要な一時ファイルを削除します。
-    rm /tmp/chromium.zip && \
+    rm -rf /tmp/chromium-pack.tar /tmp/pack-contents && \
     # 不要なキャッシュをクリーンアップします。
     dnf clean all
 
