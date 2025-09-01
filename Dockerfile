@@ -22,8 +22,8 @@ FROM public.ecr.aws/lambda/provided:al2023
 # ★★★ The Final Definitive Solution ★★★
 # 必要なツール（brotli, tar, wget）をインストールします。
 RUN dnf install -y brotli tar wget && \
-    # wgetを使用して、より堅牢な方法でChromiumバイナリをダウンロードします。
-    wget "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" -O /tmp/chromium.tar.br && \
+    # wgetを使用して、Lambdaでの動作が確認されている最新のChromiumバイナリをダウンロードします。
+    wget "https://github.com/Sparticuz/chromium/releases/download/v126.0.0/chromium-v126.0.0-al2023.tar.br" -O /tmp/chromium.tar.br && \
     # 一時ファイルに解凍します。
     brotli -d /tmp/chromium.tar.br -o /tmp/chromium.tar && \
     # 解凍したtarファイルを展開します。
