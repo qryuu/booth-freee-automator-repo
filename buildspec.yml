@@ -11,7 +11,7 @@ phases:
       - echo Building the Docker image...
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/booth-freee-automator
       # 最終版のイメージタグを設定します。
-      - IMAGE_TAG=v34.0-final
+      - IMAGE_TAG=v35.0-robust-extract
       - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
   post_build:
     commands:

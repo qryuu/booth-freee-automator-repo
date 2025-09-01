@@ -22,9 +22,14 @@ FROM public.ecr.aws/lambda/provided:al2023
 # ★★★ The Final Definitive Solution ★★★
 # 必要なツール（brotli, tar）をインストールします。
 RUN dnf install -y brotli tar && \
-    # Lambdaでの動作が確認されているAmazon Linux 2023専用のChromiumバイナリをダウンロードし、
-    # brotliで解凍した結果を、直接tarコマンドに渡して展開します。
-    curl -Ls "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" | brotli -d | tar -x -C /opt/ && \
+    # Lambdaでの動作が確認されているAmazon Linux 2023専用のChromiumバイナリをダウンロードします。
+    curl -Ls "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-al2023.tar.br" -o /tmp/chromium.tar.br && \
+    # 一時ファイルに解凍します。
+    brotli -d /tmp/chromium.tar.br -o /tmp/chromium.tar && \
+    # 解凍したtarファイルを展開します。
+    tar -xvf /tmp/chromium.tar -C /opt/ && \
+    # 不要な一時ファイルを削除します。
+    rm /tmp/chromium.tar.br /tmp/chromium.tar && \
     # 不要なキャッシュをクリーンアップします。
     dnf clean all
 
