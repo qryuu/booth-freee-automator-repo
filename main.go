@@ -19,9 +19,11 @@ func HandleRequest(requestCtx context.Context) (string, error) {
 	defer cancel()
 
 	// Set up options for headless Chrome execution in Lambda.
-	// These options are optimized for the Lambda Layer environment.
+	// These options are optimized for the modern sparticuz Lambda Layer environment.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.ExecPath("/opt/headless-chromium"),
+		// ★★★ Final Path Fix ★★★
+		// Use the correct path for the sparticuz chromium layer.
+		chromedp.ExecPath("/opt/chromium"),
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("single-process", true),
