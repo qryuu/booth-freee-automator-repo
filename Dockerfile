@@ -20,16 +20,14 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Definitive Solution ★★★
-# 必要なツール（brotli, tar, wget）をインストールします。
-RUN dnf install -y brotli tar wget && \
-    # wgetを使用して、Lambdaでの動作が確認されている最新のChromiumバイナリをダウンロードします。
-    wget "https://github.com/Sparticuz/chromium/releases/download/v126.0.0/chromium-v126.0.0-al2023.tar.br" -O /tmp/chromium.tar.br && \
-    # 一時ファイルに解凍します。
-    brotli -d /tmp/chromium.tar.br -o /tmp/chromium.tar && \
-    # 解凍したtarファイルを展開します。
+# 必要なツール（wget, tar）をインストールします。
+RUN dnf install -y wget tar && \
+    # Lambdaでの動作が確認されている最新のChromiumバイナリをダウンロードします。
+    wget "https://github.com/Sparticuz/chromium/releases/download/v138.0.2/chromium-v138.0.2-pack.x64.tar" -O /tmp/chromium.tar && \
+    # /opt ディレクトリに展開します。
     tar -xvf /tmp/chromium.tar -C /opt/ && \
     # 不要な一時ファイルを削除します。
-    rm /tmp/chromium.tar.br /tmp/chromium.tar && \
+    rm /tmp/chromium.tar && \
     # 不要なキャッシュをクリーンアップします。
     dnf clean all
 
