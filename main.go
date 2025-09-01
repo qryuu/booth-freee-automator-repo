@@ -20,7 +20,9 @@ func HandleRequest(requestCtx context.Context) (string, error) {
 
 	// Set up options for headless Chrome execution in Lambda.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.ExecPath("/opt/chromium"), // The path inside the container
+		// ★★★ Final Path Fix ★★★
+		// Use the standard path for pre-built Lambda binaries.
+		chromedp.ExecPath("/opt/headless-chromium"),
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("single-process", true),
