@@ -21,8 +21,8 @@ FROM public.ecr.aws/lambda/provided:al2023
 
 # ★★★ The Final Definitive Solution ★★★
 # ベースイメージにはcurl-minimalがプリインストールされているため、
-# 競合を避けるためにbzip2のみをインストールします。
-RUN dnf install -y bzip2 && \
+# 競合を避けるためにbzip2と、解凍に必要なtarをインストールします。
+RUN dnf install -y bzip2 tar && \
     # Lambda互換のChromiumバイナリ（bz2形式）をダウンロードします。
     curl -L https://github.com/shelfio/chrome-aws-lambda-layer/releases/download/v33/headless-chromium.tar.bz2 -o /tmp/chromium.tar.bz2 && \
     # /opt ディレクトリに正しく解凍します。
