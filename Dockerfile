@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 go build -o bootstrap main.go
 # -------------------------------------------------------------------------------------
 FROM public.ecr.aws/lambda/provided:al2023
 
-# ★★★ The Final Solution ★★★
+# ★★★ The Final Definitive Solution ★★★
 # ベースイメージにはcurl-minimalがプリインストールされているため、
 # 競合を避けるためにbzip2のみをインストールします。
 RUN dnf install -y bzip2 && \
