@@ -10,8 +10,9 @@ phases:
       - echo Zipping the binary...
       # ビルドした実行可能ファイルをZIP形式に圧縮します。
       - zip deployment.zip bootstrap
-  artifacts:
-    # ビルド成果物としてdeployment.zipを指定します。
-    files:
-      - deployment.zip
+
+# ビルド成果物としてdeployment.zipを指定します。
+artifacts:
+  files:
+    - deployment.zip
 
