@@ -10,147 +10,150 @@ const s3Client = new S3Client({ region: REGION });
 const secretsClient = new SecretsManagerClient({ region: REGION });
 
 /**
- * AWS Secrets Managerから機密情報を取得する関数
+ * Secrets Managerから機密情報を取得
  */
 async function getSecrets() {
-    console.log("Fetching secrets from Secrets Manager...");
     const command = new GetSecretValueCommand({ SecretId: SECRET_NAME });
-    try {
-        const data = await secretsClient.send(command);
-        if ('SecretString' in data) {
-            console.log("Successfully fetched secrets.");
-            return JSON.parse(data.SecretString);
-        }
-    } catch (error) {
-        console.error("Failed to fetch secrets:", error);
-        throw error;
-    }
+    const data = await secretsClient.send(command);
+    return JSON.parse(data.SecretString);
 }
 
 /**
- * リフレッシュトークンを使って新しいアクセストークンを取得し、新しいリフレッシュトークンを保存する関数
+ * 新しいアクセストークンを取得し、リフレッシュトークンを更新
  */
 async function refreshAccessToken(secrets) {
     console.log("Refreshing freee access token...");
     const url = "https://accounts.secure.freee.co.jp/public_api/token";
-    const params = new URLSearchParams();
-    params.append('grant_type', 'refresh_token');
-    params.append('client_id', secrets.FREEE_CLIENT_ID);
-    params.append('client_secret', secrets.FREEE_CLIENT_SECRET);
-    params.append('refresh_token', secrets.FREEE_REFRESH_TOKEN);
+    const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: secrets.FREEE_CLIENT_ID,
+        client_secret: secrets.FREEE_CLIENT_SECRET,
+        refresh_token: secrets.FREEE_REFRESH_TOKEN,
+    });
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params
-        });
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+    });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`Failed to refresh token: ${response.status} ${response.statusText} - ${errorBody}`);
-        }
-
-        const tokenData = await response.json();
-        console.log("Successfully refreshed access token.");
-
-        // ★★★
-        // 新しいリフレッシュトークンでSecrets Managerを更新する
-        // ★★★
-        const newSecrets = { ...secrets, FREEE_REFRESH_TOKEN: tokenData.refresh_token };
-        const updateCommand = new UpdateSecretCommand({
-            SecretId: SECRET_NAME,
-            SecretString: JSON.stringify(newSecrets),
-        });
-        await secretsClient.send(updateCommand);
-        console.log("Successfully updated the refresh token in Secrets Manager.");
-
-        return tokenData.access_token;
-
-    } catch (error) {
-        console.error("Error refreshing access token:", error);
-        throw error;
+    if (!response.ok) {
+        throw new Error(`Failed to refresh token: ${response.status} ${await response.text()}`);
     }
+
+    const tokenData = await response.json();
+    console.log("Successfully refreshed access token.");
+
+    const newSecrets = { ...secrets, FREEE_REFRESH_TOKEN: tokenData.refresh_token };
+    const updateCommand = new UpdateSecretCommand({
+        SecretId: SECRET_NAME,
+        SecretString: JSON.stringify(newSecrets),
+    });
+    await secretsClient.send(updateCommand);
+    console.log("Successfully updated the refresh token in Secrets Manager.");
+
+    return tokenData.access_token;
+}
+
+/**
+ * freee APIから勘定科目と税区分のIDを自動取得
+ */
+async function getFreeeIds(accessToken, companyId) {
+    console.log("Fetching account items and tax codes from freee...");
+    const headers = { "Authorization": `Bearer ${accessToken}` };
+
+    // 勘定科目を取得
+    const itemsRes = await fetch(`https://api.freee.co.jp/api/1/account_items?company_id=${companyId}`, { headers });
+    if (!itemsRes.ok) throw new Error("Failed to fetch account items.");
+    const { account_items } = await itemsRes.json();
+    
+    const uriageItem = account_items.find(item => item.name === "売上高");
+    const tesuryoItem = account_items.find(item => item.name === "支払手数料");
+    if (!uriageItem || !tesuryoItem) {
+        throw new Error("Could not find required account items: '売上高' or '支払手数料'");
+    }
+
+    // 税区分を取得
+    const taxesRes = await fetch(`https://api.freee.co.jp/api/1/taxes/codes?company_id=${companyId}`, { headers });
+    if (!taxesRes.ok) throw new Error("Failed to fetch tax codes.");
+    const { taxes } = await taxesRes.json();
+    
+    // ★★★ 修正点 ★★★
+    // 検索対象のキーを 'name' から 'name_ja' に変更しました。
+    const uriageTax = taxes.find(tax => tax.name_ja === "課税売上10%");
+    const shiireTax = taxes.find(tax => tax.name_ja === "課対仕入10%");
+     if (!uriageTax || !shiireTax) {
+        throw new Error("Could not find required tax codes: '課税売上10%' or '課対仕入10%'");
+    }
+
+    const ids = {
+        itemIdUriage: uriageItem.id,
+        itemIdTesuryo: tesuryoItem.id,
+        taxCodeUriage: uriageTax.code,
+        taxCodeShiire: shiireTax.code,
+    };
+    console.log("Successfully fetched all required IDs:", ids);
+    return ids;
 }
 
 
 /**
- * freee APIに取引を登録する関数
+ * freee APIに取引を登録
  */
-async function postToFreee(order, accessToken, secrets) {
+async function postToFreee(order, accessToken, secrets, ids) {
     const url = "https://api.freee.co.jp/api/1/deals";
-    const headers = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
-        "X-Api-Version": "2020-06-15"
-    };
-
     const payload = {
-        "issue_date": order.date,
-        "type": "income",
-        "company_id": parseInt(secrets.FREEE_COMPANY_ID, 10),
-        "details": [
-            {
-                "account_item_id": parseInt(secrets.FREEE_ITEM_ID_URIAGE, 10),
-                "tax_code": parseInt(secrets.FREEE_TAX_CODE_URIAGE, 10),
-                "amount": order.totalAmount,
-                "description": `PixivBooth 注文番号: ${order.orderId}`
-            },
-            {
-                "account_item_id": parseInt(secrets.FREEE_ITEM_ID_TESURYO, 10),
-                "tax_code": parseInt(secrets.FREEE_TAX_CODE_SHIIRE, 10),
-                "amount": -order.fee
-            }
+        issue_date: order.date,
+        type: "income",
+        company_id: parseInt(secrets.FREEE_COMPANY_ID, 10),
+        details: [
+            { account_item_id: ids.itemIdUriage, tax_code: ids.taxCodeUriage, amount: order.totalAmount, description: `PixivBooth 注文番号: ${order.orderId}`},
+            { account_item_id: ids.itemIdTesuryo, tax_code: ids.taxCodeShiire, amount: -order.fee }
         ],
-        "payments": [
-            {
-                "date": order.date,
-                "from_walletable_type": "wallet",
-                "from_walletable_id": parseInt(secrets.FREEE_WALLETABLE_ID, 10),
-                "amount": order.totalAmount - order.fee
-            }
-        ]
+        payments: [{
+            date: order.date,
+            from_walletable_type: "wallet",
+            from_walletable_id: parseInt(secrets.FREEE_WALLETABLE_ID, 10),
+            amount: order.totalAmount - order.fee
+        }]
     };
 
     console.log(`Posting order ${order.orderId} to freee...`);
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(payload)
-        });
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "X-Api-Version": "2020-06-15" },
+        body: JSON.stringify(payload)
+    });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`freee API Error: ${response.status} ${response.statusText} - ${errorBody}`);
-        }
-        
-        const responseData = await response.json();
-        console.log(`Successfully posted order ${order.orderId}. Deal ID: ${responseData.deal.id}`);
-        return responseData;
-    } catch (error) {
-        console.error(`Failed to post order ${order.orderId} to freee:`, error);
-        throw error;
+    if (!response.ok) {
+        throw new Error(`freee API Error: ${response.status} ${await response.text()}`);
     }
+    const responseData = await response.json();
+    console.log(`Successfully posted order ${order.orderId}. Deal ID: ${responseData.deal.id}`);
 }
 
 /**
- * S3からCSVファイルを読み込み、解析する関数
+ * S3からCSVを解析
  */
 async function parseCsvFromS3(bucket, key) {
-     // ... (この関数は変更なし)
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    const { Body } = await s3Client.send(command);
+    const records = [];
+    const parser = Body.pipe(parse({ columns: true, bom: true }));
+    for await (const record of parser) {
+        records.push(record);
+    }
+    return records;
 }
 
-
 /**
- * AWS Lambda handler function.
+ * Lambdaハンドラ
  */
-exports.handler = async (event, context) => {
-    console.log("Lambda function triggered by S3 event (Final Version)");
-
+exports.handler = async (event) => {
     try {
         const secrets = await getSecrets();
         const accessToken = await refreshAccessToken(secrets);
+        const freeeIds = await getFreeeIds(accessToken, secrets.FREEE_COMPANY_ID);
 
         const bucket = event.Records[0].s3.bucket.name;
         const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
@@ -171,21 +174,13 @@ exports.handler = async (event, context) => {
                 continue;
             }
 
-            console.log("Processing order:", orderData);
-            await postToFreee(orderData, accessToken, secrets); 
+            await postToFreee(orderData, accessToken, secrets, freeeIds); 
         }
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ message: `Successfully processed and posted ${records.length} orders from ${key}.` }),
-        };
-
+        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed and posted ${records.length} orders from ${key}.` })};
     } catch (error) {
-        console.error("An error occurred during handler execution:", error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ message: 'Handler execution failed.', error: error.message }),
-        };
+        console.error("An error occurred:", error);
+        return { statusCode: 500, body: JSON.stringify({ message: 'Handler execution failed.', error: error.message })};
     }
 };
 
