@@ -1,5 +1,7 @@
 # Pixiv Booth to freee Automation
 
+[![Release](https://img.shields.io/github/v/release/qryuu/booth-freee-automator-repo?label=最新バージョン)](https://github.com/qryuu/booth-freee-automator-repo/releases/latest)
+
 ## 概要
 
 このプロジェクトは、[Pixiv Booth](https://booth.pm/)からダウンロードした売上CSVを[会計freee](https://www.freee.co.jp/)に自動で取引登録するための、サーバーレスアプリケーションです。
@@ -11,7 +13,7 @@
 * **S3トリガー:** 指定のS3バケットに売上CSVをアップロードするだけで、自動的に処理が開始されます。
 * **自動ID解決:** freeeの勘定科目や税区分といった、手動での設定が面倒なIDをAPI経由で自動的に取得します。
 * **安全な認証:** freee APIのOAuth 2.0リフレッシュトークンに対応しており、安全かつ継続的にAPIを利用できます。認証情報はAWS Secrets Managerで厳重に管理されます。
-* **サーバーレス:** AWS Lambdaをベースにしているため、サーバーの管理が不要で、コスト効率に優れています。
+* **サーバーレス:** AWS Lambda (`Node.js 22.x`ランタイム) をベースにしているため、サーバーの管理が不要で、コスト効率に優れています。
 
 ### アーキテクチャ
 
@@ -21,7 +23,7 @@
 
 ビルド済みのLambda関数 (`deployment.zip`) は、以下のリリースページからダウンロードできます。非エンジニアの方は、こちらをご利用ください。
 
-➡️ [**Latest Releaseをダウンロード**](https://github.com/qryuu/booth-freee-automator-repo/releases/latest)
+➡️ [**v1.1.0 (Node.js 22対応版) をダウンロード**](https://github.com/qryuu/booth-freee-automator-repo/releases/latest)
 
 ---
 
@@ -29,17 +31,17 @@
 
 このプロジェクトは、AWSやAPIの知識レベルに応じて、2つのセットアップガイドを用意しています。
 
-### 非エンジニアの方向け
+### 👩‍🎨 非エンジニアの方向け
 
 AWSの画面操作だけでセットアップを完了できる、丁寧なガイドです。プログラムのコードを触る必要はありません。
 
-➡️ **[Noteで続きを読む](https://note.com/qryuu/n/n34ab87ef8c3a)**
+➡️ [**Noteで続きを読む**](https://note.com/qryuu/n/n34ab87ef8c3a)
 
 ### 🛠️ エンジニアの方向け
 
 ソースコードのカスタマイズや、より詳細な技術的背景を理解したい方向けのガイドです。
 
-➡️ **[Qiitaで続きを読む](https://qiita.com/qryuu/items/f63c023668f903956b08)**
+➡️ [**Qiitaで続きを読む**](https://qiita.com/qryuu/items/f63c023668f903956b08)
 
 ---
 
@@ -59,6 +61,15 @@ AWSの画面操作だけでセットアップを完了できる、丁寧なガ�
 1. **Pixiv Booth**から、月次の売上CSVファイルをダウンロードします。
 2. セットアップ時に作成した**S3バケット**に、そのCSVファイルをアップロードします。
 3. しばらく待つと、**会計freee**の取引一覧に、CSVの内容が自動で登録されます。
+
+## 更新履歴
+
+* **v1.1.0** (2025-09-06)
+  * LambdaランタイムをNode.js 20.xから**Node.js 22.x (LTS)**にアップデート。
+  * 依存ライブラリを最新版に更新。
+  * テストと本番環境の分離を容易にするため、参照するシークレット名をLambdaの環境変数で指定するように変更。
+* **v1.0.0** (2025-09-03)
+  * 初回リリース。
 
 ## 注意事項
 
