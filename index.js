@@ -3,7 +3,7 @@ const { SecretsManagerClient, GetSecretValueCommand, UpdateSecretCommand } = req
 const { parse } = require('csv-parse');
 
 // 定数
-const SECRET_NAME = "booth-freee-automator/credentials";
+const SECRET_NAME = process.env.SECRET_NAME;
 const REGION = process.env.AWS_REGION || "ap-northeast-1";
 
 const s3Client = new S3Client({ region: REGION });
