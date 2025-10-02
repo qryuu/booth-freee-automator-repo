@@ -107,7 +107,7 @@ async function postToFreee(order, accessToken, secrets, ids) {
         type: "income",
         company_id: parseInt(secrets.FREEE_COMPANY_ID, 10),
         details: [
-            { account_item_id: ids.itemIdUriage, tax_code: ids.taxCodeUriage, amount: order.totalAmount, description: `PixivBooth 注文番号: ${order.orderId}`},
+            { account_item_id: ids.itemIdUriage, tax_code: ids.taxCodeUriage, amount: order.totalAmount, description: order.description},
             { account_item_id: ids.itemIdTesuryo, tax_code: ids.taxCodeShiire, amount: -order.fee }
         ],
         payments: [{
@@ -157,30 +157,87 @@ exports.handler = async (event) => {
 
         const bucket = event.Records[0].s3.bucket.name;
         const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
-        
+
         const records = await parseCsvFromS3(bucket, key);
         console.log(`Parsed ${records.length} records from CSV.`);
-        
+
+        // 1. CSVのレコードを「注文番号」でグループ化する
+        const orders = new Map();
         for (const record of records) {
-            const orderData = {
-                orderId: record['注文番号'],
-                date: new Date(record['注文日時']).toISOString().split('T')[0],
-                totalAmount: parseInt(record['小計']?.replace(/,/g, '') || '0', 10),
-                fee: Math.abs(parseInt(record['手数料']?.replace(/,/g, '') || '0', 10))
-            };
-            
-            if (!orderData.orderId || !orderData.date || isNaN(orderData.totalAmount)) {
-                console.warn("Skipping invalid record:", record);
+            const orderId = record['注文番号'];
+            if (!orderId) {
+                console.warn('注文番号がないため、この行をスキップします:', record);
                 continue;
             }
 
-            await postToFreee(orderData, accessToken, secrets, freeeIds); 
+            if (!orders.has(orderId)) {
+                orders.set(orderId, {
+                    items: [],
+                    orderDate: record['注文日時'] || null,
+                    totalFee: Math.abs(parseInt(record['手数料']?.replace(/,/g, '') || '0', 10)),
+                });
+            }
+
+            const currentOrder = orders.get(orderId);
+            currentOrder.items.push({
+                name: record['商品名'],
+                variation: record['バリエーション名'],
+                subtotal: parseInt(record['小計']?.replace(/,/g, '') || '0', 10),
+            });
+
+            // 2行目以降で日付が空の場合、同じ注文の最初の行の日付を引き継ぐ
+            if (!currentOrder.orderDate && record['注文日時']) {
+                currentOrder.orderDate = record['注文日時'];
+            }
         }
 
-        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed and posted ${records.length} orders from ${key}.` })};
-    } catch (error) {
+        // 2. グループ化した注文ごとに処理を実行する
+        for (const [orderId, orderDetails] of orders.entries()) {
+            try {
+                // 注文全体の日付を検証
+                if (!orderDetails.orderDate || isNaN(new Date(orderDetails.orderDate).getTime())) {
+                    console.warn({
+                        level: 'WARN',
+                        message: '[手動登録推奨] 注文日時が不正なため、この注文全体の登録をスキップしました。',
+                        orderId: orderId,
+                        skipped_order: orderDetails
+                    });
+                    continue;
+                }
+                
+                // 注文に含まれる全商品の小計を合算する
+                const totalAmount = orderDetails.items.reduce((sum, item) => sum + item.subtotal, 0);
+
+                if (totalAmount === 0) continue;
+                
+                // freeeの摘要欄に記載する全商品名を生成
+                const description = `PixivBooth 注文番号: ${orderId} (${orderDetails.items.map(item => `${item.name}(${item.variation || 'default'})`).join(', ')})`;
+
+                // freeeに送信するデータを作成
+                const orderData = {
+                    orderId: orderId,
+                    date: new Date(orderDetails.orderDate).toISOString().split('T')[0],
+                    totalAmount: totalAmount,
+                    fee: orderDetails.totalFee,
+                    description: description // 生成した摘要をセット
+                };
+
+                await postToFreee(orderData, accessToken, secrets, freeeIds);
+
+            } catch (error) {
+                console.error({
+                    level: 'ERROR',
+                    message: '注文の登録処理中に予期せぬエラーが発生しましたが、処理を続行します。',
+                    error_details: error.message,
+                    failed_order_id: orderId
+                });
+            }
+        }
+        
+        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed orders from ${key}.` })};
+
+     } catch (error) {
         console.error("An error occurred:", error);
         return { statusCode: 500, body: JSON.stringify({ message: 'Handler execution failed.', error: error.message })};
-    }
+     }
 };
-
