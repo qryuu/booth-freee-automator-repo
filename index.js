@@ -161,21 +161,48 @@ exports.handler = async (event) => {
         const records = await parseCsvFromS3(bucket, key);
         console.log(`Parsed ${records.length} records from CSV.`);
         
-        for (const record of records) {
-            const orderData = {
-                orderId: record['注文番号'],
-                date: new Date(record['注文日時']).toISOString().split('T')[0],
-                totalAmount: parseInt(record['小計']?.replace(/,/g, '') || '0', 10),
-                fee: Math.abs(parseInt(record['手数料']?.replace(/,/g, '') || '0', 10))
-            };
-            
-            if (!orderData.orderId || !orderData.date || isNaN(orderData.totalAmount)) {
-                console.warn("Skipping invalid record:", record);
-                continue;
-            }
+      for (const record of records) {
+        try {
+          const orderDateString = record['注文日時'];
 
-            await postToFreee(orderData, accessToken, secrets, freeeIds); 
+          // 1. 日付データが空、もしくは不正な形式でないか検証します
+          if (!orderDateString || isNaN(new Date(orderDateString).getTime())) {
+            console.warn({
+              level: 'WARN',
+              message: '[手動登録推奨] 注文日時が不正なため、この行の自動登録をスキップしました。以下のデータを確認し、手動でfreeeに登録してください。',
+              skipped_record: record
+            });
+            continue; // この行の処理を中断し、次の行へ進みます
+          }
+          
+          // 2. 登録する意味のある取引か判断します（受取金額が0円の行はスキップ）
+          const receivedAmount = parseInt(record['受取金額']?.replace(/,/g, '') || '0', 10);
+          if (receivedAmount === 0) {
+              console.log(`[SKIP] 受取金額が0円のため、この行の処理をスキップします。注文番号: ${record['注文番号']}`);
+              continue;
+          }
+
+          // 3. freeeに送信するデータを作成します（検証済みなので安全です）
+          const orderData = {
+              orderId: record['注文番号'],
+              date: new Date(orderDateString).toISOString().split('T')[0], 
+              totalAmount: parseInt(record['小計']?.replace(/,/g, '') || '0', 10),
+              fee: Math.abs(parseInt(record['手数料']?.replace(/,/g, '') || '0', 10))
+          };
+
+          // 4. freee APIへ取引を登録します
+          await postToFreee(orderData, accessToken, secrets, freeeIds); 
+
+        } catch (error) {
+          // 5. 万が一、予期せぬエラーが起きても全体が止まらないようにします
+          console.error({
+            level: 'ERROR',
+            message: '取引登録中に予期せぬエラーが発生しましたが、処理を続行します。',
+            error_details: error.message,
+            failed_record: record
+          });
         }
+      }
 
         return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed and posted ${records.length} orders from ${key}.` })};
     } catch (error) {
