@@ -8,9 +8,9 @@ phases:
     commands:
       - echo Installing dependencies...
       - npm install
-      # テストを実行 (テストがない場合は echo で通過)
       - echo Running tests...
-      - npm test || echo "Warning: No tests found, skipping..."
+      # コロンが含まれるため全体をシングルクォートで囲みエラーを回避
+      - 'npm test || echo "Warning: No tests found, skipping..."'
   build:
     commands:
       - echo Build started on `date`
@@ -19,7 +19,6 @@ phases:
   post_build:
     commands:
       - echo Checking branch for deployment target...
-      # ブランチ名に応じたデプロイ先の振り分け
       - |
         if [ "$CODEBUILD_WEBHOOK_TRIGGER" = "branch/main" ]; then
           echo "Deploying to PRODUCTION environment (booth-freee-automator)..."
