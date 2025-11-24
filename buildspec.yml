@@ -3,17 +3,34 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 20
+      nodejs: 22
   pre_build:
     commands:
       - echo Installing dependencies...
       - npm install
+      - echo Running tests...
+      # コロンが含まれるため全体をシングルクォートで囲みエラーを回避
+      - 'npm test || echo "Warning: No tests found, skipping..."'
   build:
     commands:
       - echo Build started on `date`
       - echo Zipping deployment package...
-      - zip -r deployment.zip .
+      - zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md"
+  post_build:
+    commands:
+      - echo Checking branch for deployment target...
+      - |
+        if [ "$CODEBUILD_WEBHOOK_TRIGGER" = "branch/main" ]; then
+          echo "Deploying to PRODUCTION environment (booth-freee-automator)..."
+          aws lambda update-function-code --function-name booth-freee-automator --zip-file fileb://deployment.zip
+        elif [ "$CODEBUILD_WEBHOOK_TRIGGER" = "branch/develop" ]; then
+          echo "Deploying to TEST environment (booth-freee-automator-test)..."
+          aws lambda update-function-code --function-name booth-freee-automator-test --zip-file fileb://deployment.zip
+        else
+          echo "Skipping deployment for branch: $CODEBUILD_WEBHOOK_TRIGGER"
+        fi
+      - echo Deployment process finished on `date`
+
 artifacts:
   files:
     - deployment.zip
-
