@@ -78,8 +78,7 @@ async function getFreeeIds(accessToken, companyId) {
     if (!taxesRes.ok) throw new Error("Failed to fetch tax codes.");
     const { taxes } = await taxesRes.json();
     
-    // ★★★ 修正点 ★★★
-    // 検索対象のキーを 'name' から 'name_ja' に変更しました。
+    // 検索対象のキーを 'name_ja' に設定
     const uriageTax = taxes.find(tax => tax.name_ja === "課税売上10%");
     const shiireTax = taxes.find(tax => tax.name_ja === "課対仕入10%");
      if (!uriageTax || !shiireTax) {
@@ -139,6 +138,7 @@ async function parseCsvFromS3(bucket, key) {
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
     const { Body } = await s3Client.send(command);
     const records = [];
+    // BOM付きCSVにも対応
     const parser = Body.pipe(parse({ columns: true, bom: true }));
     for await (const record of parser) {
         records.push(record);
@@ -171,10 +171,15 @@ exports.handler = async (event) => {
             }
 
             if (!orders.has(orderId)) {
+                // ★修正箇所: 新旧両方のカラム名に対応
+                // '手数料' (旧) または 'サービス利用料・倉庫発送手数料' (新) を探し、なければ '0'
+                const feeString = record['手数料'] || record['サービス利用料・倉庫発送手数料'] || '0';
+                
                 orders.set(orderId, {
                     items: [],
                     orderDate: record['注文日時'] || null,
-                    totalFee: Math.abs(parseInt(record['手数料']?.replace(/,/g, '') || '0', 10)),
+                    // カンマを除去して数値化し、絶対値をとる
+                    totalFee: Math.abs(parseInt(feeString.replace(/,/g, ''), 10)),
                 });
             }
 
@@ -219,7 +224,7 @@ exports.handler = async (event) => {
                     date: new Date(orderDetails.orderDate).toISOString().split('T')[0],
                     totalAmount: totalAmount,
                     fee: orderDetails.totalFee,
-                    description: description // 生成した摘要をセット
+                    description: description
                 };
 
                 await postToFreee(orderData, accessToken, secrets, freeeIds);
