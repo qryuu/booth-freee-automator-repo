@@ -171,14 +171,21 @@ exports.handler = async (event) => {
             }
 
             if (!orders.has(orderId)) {
-                // ★修正箇所: 新旧両方のカラム名に対応
-                // '手数料' (旧) または 'サービス利用料・倉庫発送手数料' (新) を探し、なければ '0'
-                const feeString = record['手数料'] || record['サービス利用料・倉庫発送手数料'] || '0';
+                // ★ 改善箇所: 最新の「サービス利用料」を最優先し、過去の名称もカバー
+                const feeString = 
+                    record['サービス利用料'] || 
+                    record['手数料'] || 
+                    record['サービス利用料・倉庫発送手数料'] || 
+                    '0';
+                
+                // もし全ての候補が見つからない場合はログに警告を出す（デバッグ用）
+                if (!record['サービス利用料'] && !record['手数料'] && !record['サービス利用料・倉庫発送手数料']) {
+                    console.warn(`[INFO] 注文 ${orderId}: 手数料関連の項目が見つかりませんでした。0円として処理します。`);
+                }
                 
                 orders.set(orderId, {
                     items: [],
                     orderDate: record['注文日時'] || null,
-                    // カンマを除去して数値化し、絶対値をとる
                     totalFee: Math.abs(parseInt(feeString.replace(/,/g, ''), 10)),
                 });
             }
