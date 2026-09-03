@@ -24,11 +24,25 @@
 > [!TIP]
 > 仕訳科目や取引先情報がコンソール上で露出するのを防ぎセキュアに管理するため、**AWS Secrets Manager の JSON に追加することを推奨**します。
 
-| 設定キー | 設定例 | 説明 |
+| 設定キー | 設定値の例 | 説明 |
 | :--- | :--- | :--- |
-| `PARTNER_NAME` | `ピクシブ株式会社` | freeeに登録済みの取引先名 |
-| `ITEM_NAME_URIAGE` | `VRネイル` | freeeに登録済みの売上高の品目名 |
-| `ITEM_NAME_TESURYO` | `決済手数料` | freeeに登録済みの支払手数料の品目名 |
+| `PARTNER_NAME` | `（例: 任意の取引先名）` | freeeに事前登録されている取引先名（未設定時は取引先なし） |
+| `ITEM_NAME_URIAGE` | `（例: 商品名、同人誌売上、グッズ売上 など）` | freeeに事前登録されている売上高用の品目名（未設定時は品目なし） |
+| `ITEM_NAME_TESURYO` | `（例: 決済手数料、販売手数料 など）` | freeeに事前登録されている支払手数料用の品目名（未設定時は品目なし） |
+
+**AWS Secrets Manager (JSON) への追記例:**
+```json
+{
+  "FREEE_CLIENT_ID": "...",
+  "FREEE_CLIENT_SECRET": "...",
+  "FREEE_REFRESH_TOKEN": "...",
+  "FREEE_COMPANY_ID": "...",
+  "FREEE_WALLETABLE_ID": "...",
+  "PARTNER_NAME": "登録済みの取引先名",
+  "ITEM_NAME_URIAGE": "登録済みの売上品目名",
+  "ITEM_NAME_TESURYO": "登録済みの手数料品目名"
+}
+```
 
 
 
