@@ -1,6 +1,6 @@
 {
   "name": "booth-freee-automator-s3",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "Lambda function to process Booth CSV from S3 and post to freee.",
   "main": "index.js",
   "scripts": {
