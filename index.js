@@ -6,8 +6,30 @@ const { parse } = require('csv-parse');
 const SECRET_NAME = process.env.SECRET_NAME;
 const REGION = process.env.AWS_REGION || "ap-northeast-1";
 
+// オプショナル設定: 環境変数（またはSecrets Manager）から取得
+const PARTNER_NAME = process.env.PARTNER_NAME;
+const ITEM_NAME_URIAGE = process.env.ITEM_NAME_URIAGE;
+const ITEM_NAME_TESURYO = process.env.ITEM_NAME_TESURYO;
+
 const s3Client = new S3Client({ region: REGION });
 const secretsClient = new SecretsManagerClient({ region: REGION });
+
+/**
+ * 注文日時から 'YYYY-MM-DD' を安全に抽出（JSTのタイムゾーンズレ防止）
+ */
+function formatOrderDate(dateString) {
+    if (!dateString) return null;
+    const match = dateString.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+    if (match) {
+        const year = match[1];
+        const month = match[2].padStart(2, '0');
+        const day = match[3].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('sv-SE');
+}
 
 /**
  * Secrets Managerから機密情報を取得
@@ -56,9 +78,9 @@ async function refreshAccessToken(secrets) {
 }
 
 /**
- * freee APIから勘定科目と税区分のIDを自動取得
+ * freee APIから勘定科目、税区分、取引先、品目のIDを自動取得
  */
-async function getFreeeIds(accessToken, companyId) {
+async function getFreeeIds(accessToken, companyId, options = {}) {
     console.log("Fetching account items and tax codes from freee...");
     const headers = { "Authorization": `Bearer ${accessToken}` };
 
@@ -81,8 +103,58 @@ async function getFreeeIds(accessToken, companyId) {
     // 検索対象のキーを 'name_ja' に設定
     const uriageTax = taxes.find(tax => tax.name_ja === "課税売上10%");
     const shiireTax = taxes.find(tax => tax.name_ja === "課対仕入10%");
-     if (!uriageTax || !shiireTax) {
+    if (!uriageTax || !shiireTax) {
         throw new Error("Could not find required tax codes: '課税売上10%' or '課対仕入10%'");
+    }
+
+    // 取引先IDの解決（オプショナル設定）
+    let partnerId = null;
+    if (options.partnerName) {
+        console.log(`Searching for partner: "${options.partnerName}"...`);
+        const partnerRes = await fetch(
+            `https://api.freee.co.jp/api/1/partners?company_id=${companyId}&keyword=${encodeURIComponent(options.partnerName)}`,
+            { headers }
+        );
+        if (!partnerRes.ok) {
+            throw new Error(`Failed to fetch partners: ${partnerRes.status} ${await partnerRes.text()}`);
+        }
+        const { partners } = await partnerRes.json();
+        const foundPartner = partners.find(p => p.name === options.partnerName || p.display_name === options.partnerName);
+        if (!foundPartner) {
+            throw new Error(`Partner '${options.partnerName}' was specified, but could not be found in freee.`);
+        }
+        partnerId = foundPartner.id;
+        console.log(`Found partner ID: ${partnerId} for "${options.partnerName}"`);
+    }
+
+    // 品目IDの解決（オプショナル設定）
+    let itemIdUriageItem = null;
+    let itemIdTesuryoItem = null;
+    if (options.itemNameUriage || options.itemNameTesuryo) {
+        console.log("Fetching items from freee...");
+        const freeeItemsRes = await fetch(`https://api.freee.co.jp/api/1/items?company_id=${companyId}`, { headers });
+        if (!freeeItemsRes.ok) {
+            throw new Error(`Failed to fetch items: ${freeeItemsRes.status} ${await freeeItemsRes.text()}`);
+        }
+        const { items } = await freeeItemsRes.json();
+
+        if (options.itemNameUriage) {
+            const foundItem = items.find(item => item.name === options.itemNameUriage);
+            if (!foundItem) {
+                throw new Error(`Item '${options.itemNameUriage}' was specified for sales, but could not be found in freee.`);
+            }
+            itemIdUriageItem = foundItem.id;
+            console.log(`Found sales item ID: ${itemIdUriageItem} for "${options.itemNameUriage}"`);
+        }
+
+        if (options.itemNameTesuryo) {
+            const foundItem = items.find(item => item.name === options.itemNameTesuryo);
+            if (!foundItem) {
+                throw new Error(`Item '${options.itemNameTesuryo}' was specified for fees, but could not be found in freee.`);
+            }
+            itemIdTesuryoItem = foundItem.id;
+            console.log(`Found fee item ID: ${itemIdTesuryoItem} for "${options.itemNameTesuryo}"`);
+        }
     }
 
     const ids = {
@@ -90,6 +162,9 @@ async function getFreeeIds(accessToken, companyId) {
         itemIdTesuryo: tesuryoItem.id,
         taxCodeUriage: uriageTax.code,
         taxCodeShiire: shiireTax.code,
+        partnerId,
+        itemIdUriageItem,
+        itemIdTesuryoItem,
     };
     console.log("Successfully fetched all required IDs:", ids);
     return ids;
@@ -101,14 +176,28 @@ async function getFreeeIds(accessToken, companyId) {
  */
 async function postToFreee(order, accessToken, secrets, ids) {
     const url = "https://api.freee.co.jp/api/1/deals";
+    const details = [
+        {
+            account_item_id: ids.itemIdUriage,
+            tax_code: ids.taxCodeUriage,
+            amount: order.totalAmount,
+            description: order.description,
+            ...(ids.itemIdUriageItem ? { item_id: ids.itemIdUriageItem } : {})
+        },
+        {
+            account_item_id: ids.itemIdTesuryo,
+            tax_code: ids.taxCodeShiire,
+            amount: -order.fee,
+            ...(ids.itemIdTesuryoItem ? { item_id: ids.itemIdTesuryoItem } : {})
+        }
+    ];
+
     const payload = {
         issue_date: order.date,
         type: "income",
         company_id: parseInt(secrets.FREEE_COMPANY_ID, 10),
-        details: [
-            { account_item_id: ids.itemIdUriage, tax_code: ids.taxCodeUriage, amount: order.totalAmount, description: order.description},
-            { account_item_id: ids.itemIdTesuryo, tax_code: ids.taxCodeShiire, amount: -order.fee }
-        ],
+        ...(ids.partnerId ? { partner_id: ids.partnerId } : {}),
+        details: details,
         payments: [{
             date: order.date,
             from_walletable_type: "wallet",
@@ -153,7 +242,17 @@ exports.handler = async (event) => {
     try {
         const secrets = await getSecrets();
         const accessToken = await refreshAccessToken(secrets);
-        const freeeIds = await getFreeeIds(accessToken, secrets.FREEE_COMPANY_ID);
+
+        // 取引先名・品目名（環境変数優先、Secrets Managerフォールバック）
+        const partnerName = PARTNER_NAME || secrets.PARTNER_NAME || null;
+        const itemNameUriage = ITEM_NAME_URIAGE || secrets.ITEM_NAME_URIAGE || null;
+        const itemNameTesuryo = ITEM_NAME_TESURYO || secrets.ITEM_NAME_TESURYO || null;
+
+        const freeeIds = await getFreeeIds(accessToken, secrets.FREEE_COMPANY_ID, {
+            partnerName,
+            itemNameUriage,
+            itemNameTesuryo,
+        });
 
         const bucket = event.Records[0].s3.bucket.name;
         const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
@@ -206,8 +305,9 @@ exports.handler = async (event) => {
         // 2. グループ化した注文ごとに処理を実行する
         for (const [orderId, orderDetails] of orders.entries()) {
             try {
-                // 注文全体の日付を検証
-                if (!orderDetails.orderDate || isNaN(new Date(orderDetails.orderDate).getTime())) {
+                // 注文全体の日付を検証 & JSTベースでYYYY-MM-DDを生成（タイムゾーンズレ防止）
+                const formattedDate = formatOrderDate(orderDetails.orderDate);
+                if (!formattedDate) {
                     console.warn({
                         level: 'WARN',
                         message: '[手動登録推奨] 注文日時が不正なため、この注文全体の登録をスキップしました。',
@@ -228,7 +328,7 @@ exports.handler = async (event) => {
                 // freeeに送信するデータを作成
                 const orderData = {
                     orderId: orderId,
-                    date: new Date(orderDetails.orderDate).toISOString().split('T')[0],
+                    date: formattedDate,
                     totalAmount: totalAmount,
                     fee: orderDetails.totalFee,
                     description: description
