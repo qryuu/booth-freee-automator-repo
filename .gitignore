@@ -12,7 +12,8 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local secrets file (important for security)
+# Local secrets and handoffs
 secrets.json
 .env
+HANDOFF*.md
 
