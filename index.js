@@ -32,6 +32,17 @@ function formatOrderDate(dateString) {
 }
 
 /**
+ * 'YYYY-MM-DD' 文字列の日付を前後にシフト（UTC基準でタイムゾーンズレを防止）
+ */
+function shiftDateString(dateString, days) {
+    if (!dateString) return null;
+    const parts = dateString.split('-').map(Number);
+    if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return null;
+    const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+    return d.toISOString().slice(0, 10);
+}
+
+/**
  * Secrets Managerから機密情報を取得
  */
 async function getSecrets() {
@@ -223,10 +234,16 @@ async function postToFreee(order, accessToken, secrets, ids) {
 
 /**
  * 対象期間内の既存取引をfreeeから取得し、登録済みの注文番号一覧（Set）を生成（二重登録防止）
+ * 過去バージョンのUTCズレ等も考慮し、前後1日の安全バッファを適用して取得
  */
 async function fetchExistingOrderIds(accessToken, companyId, minDate, maxDate) {
     if (!minDate || !maxDate) return new Set();
-    console.log(`Fetching existing deals between ${minDate} and ${maxDate} to prevent duplicates...`);
+
+    // 前後1日の安全バッファを適用（UTCズレ等による日付相違も確実に検知）
+    const bufferedMinDate = shiftDateString(minDate, -1);
+    const bufferedMaxDate = shiftDateString(maxDate, 1);
+
+    console.log(`Fetching existing deals between ${bufferedMinDate} and ${bufferedMaxDate} (buffered from ${minDate}~${maxDate}) to prevent duplicates...`);
 
     const existingOrderIds = new Set();
     const headers = {
@@ -238,11 +255,11 @@ async function fetchExistingOrderIds(accessToken, companyId, minDate, maxDate) {
     let hasMore = true;
 
     while (hasMore) {
-        const url = `https://api.freee.co.jp/api/1/deals?company_id=${companyId}&start_issue_date=${minDate}&end_issue_date=${maxDate}&limit=${limit}&offset=${offset}`;
+        const url = `https://api.freee.co.jp/api/1/deals?company_id=${companyId}&type=income&start_issue_date=${bufferedMinDate}&end_issue_date=${bufferedMaxDate}&limit=${limit}&offset=${offset}`;
         const response = await fetch(url, { headers });
         if (!response.ok) {
-            console.warn(`[WARN] Failed to fetch existing deals (${response.status} ${await response.text()}). Duplicate check skipped for this range.`);
-            break;
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch existing deals from freee (${response.status}: ${errorText}). Duplicate check aborted to prevent accidental double-registration.`);
         }
 
         const data = await response.json();
@@ -254,15 +271,15 @@ async function fetchExistingOrderIds(accessToken, companyId, minDate, maxDate) {
         for (const deal of deals) {
             // 1. ref_number に保存されている注文番号をチェック
             if (deal.ref_number) {
-                existingOrderIds.add(String(deal.ref_number));
+                existingOrderIds.add(String(deal.ref_number).trim());
             }
             // 2. 過去バージョンで登録された description 内の注文番号（フォールバック）をチェック
             if (deal.details && Array.isArray(deal.details)) {
                 for (const d of deal.details) {
                     if (d.description) {
-                        const match = d.description.match(/注文番号:\s*([^\s()]+)/);
+                        const match = d.description.match(/注文番号[:：]?\s*([A-Za-z0-9_-]+)/);
                         if (match && match[1]) {
-                            existingOrderIds.add(match[1]);
+                            existingOrderIds.add(match[1].trim());
                         }
                     }
                 }
@@ -323,7 +340,7 @@ exports.handler = async (event) => {
         // 1. CSVのレコードを「注文番号」でグループ化する
         const orders = new Map();
         for (const record of records) {
-            const orderId = record['注文番号'];
+            const orderId = String(record['注文番号'] || '').trim();
             if (!orderId) {
                 console.warn('注文番号がないため、この行をスキップします:', record);
                 continue;
@@ -376,23 +393,20 @@ exports.handler = async (event) => {
             validDates.sort();
             const minDate = validDates[0];
             const maxDate = validDates[validDates.length - 1];
-            try {
-                existingOrderIds = await fetchExistingOrderIds(accessToken, secrets.FREEE_COMPANY_ID, minDate, maxDate);
-            } catch (err) {
-                console.warn("[WARN] Could not fetch existing deals for duplicate check:", err.message);
-            }
+            // 既存取引の取得に失敗した場合は安全のため中断（フェイルセーフ: 二重登録を完全防止）
+            existingOrderIds = await fetchExistingOrderIds(accessToken, secrets.FREEE_COMPANY_ID, minDate, maxDate);
         }
 
-        let registeredCount = 0;
-        let skippedCount = 0;
+        const registeredOrderIds = [];
+        const skippedOrderIds = [];
 
         // 3. グループ化した注文ごとに処理を実行する
         for (const [orderId, orderDetails] of orders.entries()) {
             try {
                 // 二重登録防止ガード: 既にfreeeに存在する注文番号はスキップ
-                if (existingOrderIds.has(String(orderId))) {
-                    console.log(`[SKIP] 注文番号: ${orderId} は既にfreeeに登録済みのためスキップします (二重登録防止)。`);
-                    skippedCount++;
+                if (existingOrderIds.has(orderId)) {
+                    console.log(`[DUPLICATE_SKIP] 注文番号: ${orderId} は既にfreeeに登録済みのためスキップします。`);
+                    skippedOrderIds.push(orderId);
                     continue;
                 }
 
@@ -426,8 +440,8 @@ exports.handler = async (event) => {
                 };
 
                 await postToFreee(orderData, accessToken, secrets, freeeIds);
-                existingOrderIds.add(String(orderId));
-                registeredCount++;
+                existingOrderIds.add(orderId);
+                registeredOrderIds.push(orderId);
 
             } catch (error) {
                 console.error({
@@ -439,7 +453,17 @@ exports.handler = async (event) => {
             }
         }
         
-        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed orders from ${key}. (Registered: ${registeredCount}, Skipped: ${skippedCount})` })};
+        const summary = {
+            message: `Successfully processed CSV: ${key}`,
+            totalOrdersInCsv: orders.size,
+            registeredCount: registeredOrderIds.length,
+            skippedCount: skippedOrderIds.length,
+            registeredOrderIds,
+            skippedOrderIds,
+        };
+        console.log("=== Execution Summary ===", JSON.stringify(summary, null, 2));
+
+        return { statusCode: 200, body: JSON.stringify(summary) };
 
      } catch (error) {
         console.error("An error occurred:", error);
@@ -451,6 +475,7 @@ exports.handler = async (event) => {
 module.exports = {
     handler: exports.handler,
     formatOrderDate,
+    shiftDateString,
     fetchExistingOrderIds,
     postToFreee,
     getFreeeIds,
