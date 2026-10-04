@@ -197,6 +197,7 @@ async function postToFreee(order, accessToken, secrets, ids) {
         type: "income",
         company_id: parseInt(secrets.FREEE_COMPANY_ID, 10),
         ...(ids.partnerId ? { partner_id: ids.partnerId } : {}),
+        ref_number: String(order.orderId),
         details: details,
         payments: [{
             date: order.date,
@@ -218,6 +219,65 @@ async function postToFreee(order, accessToken, secrets, ids) {
     }
     const responseData = await response.json();
     console.log(`Successfully posted order ${order.orderId}. Deal ID: ${responseData.deal.id}`);
+}
+
+/**
+ * 対象期間内の既存取引をfreeeから取得し、登録済みの注文番号一覧（Set）を生成（二重登録防止）
+ */
+async function fetchExistingOrderIds(accessToken, companyId, minDate, maxDate) {
+    if (!minDate || !maxDate) return new Set();
+    console.log(`Fetching existing deals between ${minDate} and ${maxDate} to prevent duplicates...`);
+
+    const existingOrderIds = new Set();
+    const headers = {
+        "Authorization": `Bearer ${accessToken}`,
+        "X-Api-Version": "2020-06-15"
+    };
+    const limit = 100;
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const url = `https://api.freee.co.jp/api/1/deals?company_id=${companyId}&start_issue_date=${minDate}&end_issue_date=${maxDate}&limit=${limit}&offset=${offset}`;
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+            console.warn(`[WARN] Failed to fetch existing deals (${response.status} ${await response.text()}). Duplicate check skipped for this range.`);
+            break;
+        }
+
+        const data = await response.json();
+        const deals = data.deals || [];
+        if (deals.length === 0) {
+            break;
+        }
+
+        for (const deal of deals) {
+            // 1. ref_number に保存されている注文番号をチェック
+            if (deal.ref_number) {
+                existingOrderIds.add(String(deal.ref_number));
+            }
+            // 2. 過去バージョンで登録された description 内の注文番号（フォールバック）をチェック
+            if (deal.details && Array.isArray(deal.details)) {
+                for (const d of deal.details) {
+                    if (d.description) {
+                        const match = d.description.match(/注文番号:\s*([^\s()]+)/);
+                        if (match && match[1]) {
+                            existingOrderIds.add(match[1]);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (deals.length < limit) {
+            hasMore = false;
+        } else {
+            offset += limit;
+        }
+    }
+
+    console.log(`Found ${existingOrderIds.size} existing orders in freee for duplicate check.`);
+    return existingOrderIds;
 }
 
 /**
@@ -302,9 +362,40 @@ exports.handler = async (event) => {
             }
         }
 
-        // 2. グループ化した注文ごとに処理を実行する
+        // 2. 有効な注文の日付範囲を特定し、既存取引を事前取得（二重登録防止）
+        const validDates = [];
+        for (const orderDetails of orders.values()) {
+            const formattedDate = formatOrderDate(orderDetails.orderDate);
+            if (formattedDate) {
+                validDates.push(formattedDate);
+            }
+        }
+
+        let existingOrderIds = new Set();
+        if (validDates.length > 0) {
+            validDates.sort();
+            const minDate = validDates[0];
+            const maxDate = validDates[validDates.length - 1];
+            try {
+                existingOrderIds = await fetchExistingOrderIds(accessToken, secrets.FREEE_COMPANY_ID, minDate, maxDate);
+            } catch (err) {
+                console.warn("[WARN] Could not fetch existing deals for duplicate check:", err.message);
+            }
+        }
+
+        let registeredCount = 0;
+        let skippedCount = 0;
+
+        // 3. グループ化した注文ごとに処理を実行する
         for (const [orderId, orderDetails] of orders.entries()) {
             try {
+                // 二重登録防止ガード: 既にfreeeに存在する注文番号はスキップ
+                if (existingOrderIds.has(String(orderId))) {
+                    console.log(`[SKIP] 注文番号: ${orderId} は既にfreeeに登録済みのためスキップします (二重登録防止)。`);
+                    skippedCount++;
+                    continue;
+                }
+
                 // 注文全体の日付を検証 & JSTベースでYYYY-MM-DDを生成（タイムゾーンズレ防止）
                 const formattedDate = formatOrderDate(orderDetails.orderDate);
                 if (!formattedDate) {
@@ -335,6 +426,8 @@ exports.handler = async (event) => {
                 };
 
                 await postToFreee(orderData, accessToken, secrets, freeeIds);
+                existingOrderIds.add(String(orderId));
+                registeredCount++;
 
             } catch (error) {
                 console.error({
@@ -346,10 +439,20 @@ exports.handler = async (event) => {
             }
         }
         
-        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed orders from ${key}.` })};
+        return { statusCode: 200, body: JSON.stringify({ message: `Successfully processed orders from ${key}. (Registered: ${registeredCount}, Skipped: ${skippedCount})` })};
 
      } catch (error) {
         console.error("An error occurred:", error);
         return { statusCode: 500, body: JSON.stringify({ message: 'Handler execution failed.', error: error.message })};
      }
+};
+
+// テストおよび外部利用のためのエクスポート
+module.exports = {
+    handler: exports.handler,
+    formatOrderDate,
+    fetchExistingOrderIds,
+    postToFreee,
+    getFreeeIds,
+    parseCsvFromS3,
 };
