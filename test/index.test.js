@@ -164,3 +164,22 @@ test('handleHttpRequest: POST で空データ送信時は 400 エラーを返す
     const data = JSON.parse(response.body);
     assert.equal(data.success, false);
 });
+
+test('csv-parse: Readable ストリームから BOM付きCSV を正常にパースできる (v7互換性検証)', async () => {
+    const { Readable } = require('node:stream');
+    const { parse } = require('csv-parse');
+
+    const csvContent = '\uFEFF"注文番号","注文日時","合計金額"\n"11223344","2026/10/01 10:00:00","3000"\n';
+    const stream = Readable.from([Buffer.from(csvContent, 'utf-8')]);
+
+    const records = [];
+    const parser = stream.pipe(parse({ columns: true, bom: true }));
+    for await (const record of parser) {
+        records.push(record);
+    }
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0]['注文番号'], '11223344');
+    assert.equal(records[0]['合計金額'], '3000');
+});
+

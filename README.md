@@ -102,7 +102,12 @@ AWSの画面操作だけでセットアップを完了できる、丁寧なガ�
   * アップロードされたCSVを自動的にS3バケットへ保存し、既存の自動記帳パイプラインにシームレスに引き渡し。
   * `PORTAL_TITLE` 環境変数による画面タイトル・ブランドのカスタマイズに対応。
   * `UPLOAD_BUCKET_NAME` 環境変数によるアップロード先バケット名の動的設定に対応。
-  * 単体テストスイートに HTTP リクエスト処理（GET/POST）の検証を追加。
+  * 単体テストスイートに HTTP リクエスト処理（GET/POST）および CSVパース互換性テストを追加。
+  * **依存関係のセキュリティ強化と脆弱性解消（Dependabot対策）。**
+  * `csv-parse` を v7 (v7.0.3) へアップデートし Prototype Pollution 脆弱性（GHSA-8cw4-87c7-c6xx）を解消。
+  * `@aws-sdk/client-s3` および `@aws-sdk/client-secrets-manager` を最新化し、推移的依存の脆弱性（`fast-xml-parser`, `uuid` 等）をすべて解消（vulnerabilities: 0）。
+  * `package-lock.json` をリポジトリにコミットし、ビルド再現性を担保。
+  * `.github/dependabot.yml` を導入し、継続的な依存関係セキュリティ監視体制を構築。
 * **v1.5.0** (2026-10-04)
   * **二重登録防止ガード機能を追加。**
   * 取引登録時にfreeeの管理番号（`ref_number`）へBOOTHの注文番号を自動付与。
