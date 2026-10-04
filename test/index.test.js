@@ -130,3 +130,56 @@ test('postToFreee: 取引作成ペイロードに ref_number が含まれる', a
     assert.equal(capturedPayload.details[0].amount, 5000);
     assert.equal(capturedPayload.details[1].amount, -500);
 });
+
+test('handleHttpRequest: GET リクエスト時に HTML アップロード画面を返す', async () => {
+    const { handleHttpRequest } = require('../index.js');
+    const event = {
+        requestContext: {
+            http: {
+                method: 'GET'
+            }
+        }
+    };
+
+    const response = await handleHttpRequest(event);
+    assert.equal(response.statusCode, 200);
+    assert.ok(response.headers['Content-Type'].includes('text/html'));
+    assert.ok(response.body.includes('九龍工房 会計自動化ポータル'));
+    assert.ok(response.body.includes('BOOTH売上データ アップロード'));
+});
+
+test('handleHttpRequest: POST で空データ送信時は 400 エラーを返す', async () => {
+    const { handleHttpRequest } = require('../index.js');
+    const event = {
+        requestContext: {
+            http: {
+                method: 'POST'
+            }
+        },
+        body: ''
+    };
+
+    const response = await handleHttpRequest(event);
+    assert.equal(response.statusCode, 400);
+    const data = JSON.parse(response.body);
+    assert.equal(data.success, false);
+});
+
+test('csv-parse: Readable ストリームから BOM付きCSV を正常にパースできる (v7互換性検証)', async () => {
+    const { Readable } = require('node:stream');
+    const { parse } = require('csv-parse');
+
+    const csvContent = '\uFEFF"注文番号","注文日時","合計金額"\n"11223344","2026/10/01 10:00:00","3000"\n';
+    const stream = Readable.from([Buffer.from(csvContent, 'utf-8')]);
+
+    const records = [];
+    const parser = stream.pipe(parse({ columns: true, bom: true }));
+    for await (const record of parser) {
+        records.push(record);
+    }
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0]['注文番号'], '11223344');
+    assert.equal(records[0]['合計金額'], '3000');
+});
+

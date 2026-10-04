@@ -1,10 +1,11 @@
-const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { SecretsManagerClient, GetSecretValueCommand, UpdateSecretCommand } = require("@aws-sdk/client-secrets-manager");
 const { parse } = require('csv-parse');
 
 // 定数
 const SECRET_NAME = process.env.SECRET_NAME;
 const REGION = process.env.AWS_REGION || "ap-northeast-1";
+const UPLOAD_BUCKET_NAME = process.env.UPLOAD_BUCKET_NAME || "booth-freee-csv-upload-chocotip";
 
 // オプショナル設定: 環境変数（またはSecrets Manager）から取得
 const PARTNER_NAME = process.env.PARTNER_NAME;
@@ -313,9 +314,269 @@ async function parseCsvFromS3(bucket, key) {
 }
 
 /**
+ * Function URL用のHTMLアップロード画面
+ */
+function renderUploadHtml() {
+    return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BOOTH売上データ アップロード | 九龍工房</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-sub: #475569;
+            --border: #cbd5e1;
+            --success-bg: #ecfdf5;
+            --success-border: #10b981;
+            --success-text: #065f46;
+            --error-bg: #fef2f2;
+            --error-border: #ef4444;
+            --error-text: #991b1b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 24px; }
+        .card { background: var(--card-bg); max-width: 560px; width: 100%; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); padding: 32px; border: 1px solid #e2e8f0; }
+        .header { text-align: center; margin-bottom: 24px; }
+        .badge { display: inline-block; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 9999px; margin-bottom: 8px; }
+        h1 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+        .subtitle { font-size: 13px; color: var(--text-sub); }
+        .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 36px 20px; text-align: center; background: #fafafa; cursor: pointer; transition: all 0.2s; }
+        .dropzone.dragover { border-color: var(--primary); background: #eff6ff; }
+        .dropzone-icon { font-size: 36px; margin-bottom: 8px; display: block; }
+        .dropzone-text { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .dropzone-sub { font-size: 12px; color: var(--text-sub); }
+        #fileInput { display: none; }
+        .file-preview { display: none; margin-top: 16px; padding: 12px 16px; background: #f1f5f9; border-radius: 8px; align-items: center; justify-content: space-between; }
+        .file-info { display: flex; align-items: center; gap: 10px; }
+        .file-name { font-size: 14px; font-weight: 600; }
+        .file-size { font-size: 12px; color: var(--text-sub); }
+        .btn-remove { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 18px; padding: 4px; }
+        .btn-upload { width: 100%; margin-top: 20px; padding: 14px; background-color: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-upload:hover:not(:disabled) { background-color: var(--primary-hover); }
+        .btn-upload:disabled { background-color: #94a3b8; cursor: not-allowed; }
+        .result-box { display: none; margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+        .result-box.success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text); }
+        .result-box.error { background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); }
+        .spinner { width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .help-note { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: var(--text-sub); line-height: 1.6; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="header">
+        <span class="badge">九龍工房 会計自動化ポータル</span>
+        <h1>BOOTH売上データ アップロード</h1>
+        <p class="subtitle">ダウンロードした売上CSVを投入するとfreeeに自動記帳されます</p>
+    </div>
+    <div class="dropzone" id="dropzone">
+        <span class="dropzone-icon">📥</span>
+        <div class="dropzone-text">ここに売上CSVをドラッグ＆ドロップ</div>
+        <div class="dropzone-sub">またはクリックしてファイルを選択 (.csv)</div>
+        <input type="file" id="fileInput" accept=".csv,text/csv">
+    </div>
+    <div class="file-preview" id="filePreview">
+        <div class="file-info">
+            <span>📄</span>
+            <div>
+                <div class="file-name" id="fileName">Orders.csv</div>
+                <div class="file-size" id="fileSize">0 KB</div>
+            </div>
+        </div>
+        <button class="btn-remove" id="btnRemove" title="選択解除">✕</button>
+    </div>
+    <button class="btn-upload" id="btnUpload" disabled>
+        <span class="spinner" id="spinner"></span>
+        <span id="btnText">freeeに自動記帳を開始する</span>
+    </button>
+    <div class="result-box" id="resultBox"></div>
+    <div class="help-note">
+        <strong>💡 安心のセルフサービス設計:</strong><br>
+        すでにfreeeに登録済みの注文は自動検知して安全にスキップされます（二重計上防止）。<br>
+        アップロード後、数十秒でfreeeの「BOOTH」口座に取引が反映されます。
+    </div>
+</div>
+<script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const filePreview = document.getElementById('filePreview');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const btnRemove = document.getElementById('btnRemove');
+    const btnUpload = document.getElementById('btnUpload');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+    const resultBox = document.getElementById('resultBox');
+
+    let selectedFile = null;
+
+    ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+    });
+    dropzone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) handleFile(files[0]);
+    });
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            showResult('error', 'CSV形式のファイル（.csv）を選択してください。');
+            return;
+        }
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+        filePreview.style.display = 'flex';
+        btnUpload.disabled = false;
+        hideResult();
+    }
+
+    btnRemove.addEventListener('click', () => {
+        selectedFile = null;
+        fileInput.value = '';
+        filePreview.style.display = 'none';
+        btnUpload.disabled = true;
+        hideResult();
+    });
+
+    btnUpload.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        setLoading(true);
+        hideResult();
+        try {
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/csv' },
+                body: selectedFile
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'アップロードに失敗しました。');
+            showResult('success', '<strong>🎉 アップロード完了！</strong><br>' + data.message + '<br><small>数十秒後にfreeeの「BOOTH」口座をご確認ください。</small>');
+            selectedFile = null;
+            filePreview.style.display = 'none';
+            btnUpload.disabled = true;
+        } catch (err) {
+            showResult('error', '<strong>⚠️ エラー:</strong> ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    function setLoading(isLoading) {
+        btnUpload.disabled = isLoading;
+        spinner.style.display = isLoading ? 'inline-block' : 'none';
+        btnText.textContent = isLoading ? 'アップロード処理中...' : 'freeeに自動記帳を開始する';
+    }
+    function showResult(type, html) {
+        resultBox.className = 'result-box ' + type;
+        resultBox.innerHTML = html;
+        resultBox.style.display = 'block';
+    }
+    function hideResult() { resultBox.style.display = 'none'; }
+</script>
+</body>
+</html>`;
+}
+
+/**
+ * Function URL (HTTP) リクエストの処理
+ */
+async function handleHttpRequest(event) {
+    const method = event.requestContext?.http?.method || 'GET';
+
+    if (method === 'GET') {
+        return {
+            statusCode: 200,
+            headers: {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            },
+            body: renderUploadHtml()
+        };
+    }
+
+    if (method === 'POST') {
+        try {
+            let csvBuffer;
+            if (event.isBase64Encoded) {
+                csvBuffer = Buffer.from(event.body, 'base64');
+            } else {
+                csvBuffer = Buffer.from(event.body || '', 'utf-8');
+            }
+
+            if (!csvBuffer || csvBuffer.length === 0) {
+                return {
+                    statusCode: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ success: false, message: 'CSVデータが空です。' })
+                };
+            }
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const key = `Orders_${timestamp}.csv`;
+
+            const putCmd = new PutObjectCommand({
+                Bucket: UPLOAD_BUCKET_NAME,
+                Key: key,
+                Body: csvBuffer,
+                ContentType: 'text/csv'
+            });
+
+            await s3Client.send(putCmd);
+            console.log(`Successfully uploaded ${key} to ${UPLOAD_BUCKET_NAME}`);
+
+            return {
+                statusCode: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    success: true,
+                    key: key,
+                    bucket: UPLOAD_BUCKET_NAME,
+                    message: `ファイル (${key}) がS3に正常に保存されました。間もなくfreeeへの自動記帳が実行されます。`
+                })
+            };
+        } catch (error) {
+            console.error('Error handling CSV upload:', error);
+            return {
+                statusCode: 500,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    success: false,
+                    message: `アップロード処理中にエラーが発生しました: ${error.message}`
+                })
+            };
+        }
+    }
+
+    return {
+        statusCode: 405,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Method Not Allowed' })
+    };
+}
+
+/**
  * Lambdaハンドラ
  */
 exports.handler = async (event) => {
+    // Function URL / HTTP リクエストの処理
+    if (event.requestContext?.http) {
+        return await handleHttpRequest(event);
+    }
+
     try {
         const secrets = await getSecrets();
         const accessToken = await refreshAccessToken(secrets);
@@ -480,4 +741,6 @@ module.exports = {
     postToFreee,
     getFreeeIds,
     parseCsvFromS3,
+    renderUploadHtml,
+    handleHttpRequest,
 };
