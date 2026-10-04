@@ -6,30 +6,64 @@ phases:
       nodejs: 22
   pre_build:
     commands:
-      - echo Installing dependencies...
-      - npm install
-      - echo Running tests...
-      # コロンが含まれるため全体をシングルクォートで囲みエラーを回避
-      - 'npm test || echo "Warning: No tests found, skipping..."'
+      - echo "Checking changed files in this push..."
+      - |
+        if [ -n "$CODEBUILD_WEBHOOK_PREV_COMMIT" ] && [ "$CODEBUILD_WEBHOOK_PREV_COMMIT" != "0000000000000000000000000000000000000000" ]; then
+          DIFF_RANGE="$CODEBUILD_WEBHOOK_PREV_COMMIT..HEAD"
+        else
+          DIFF_RANGE="HEAD~1..HEAD"
+        fi
+        echo "Evaluating diff range: $DIFF_RANGE"
+        CHANGED_FILES=$(git diff --name-only $DIFF_RANGE 2>/dev/null || git show --name-only --format="" HEAD)
+        echo "Changed files in this push:"
+        echo "$CHANGED_FILES"
+
+        if echo "$CHANGED_FILES" | grep -qE '^(index\.js|package\.json|package-lock\.json|buildspec\.yml|test/)'; then
+          echo "Code changes detected. Proceeding with install, test and deploy."
+          echo "SHOULD_DEPLOY=true" > /tmp/deploy_flag
+        else
+          echo "Only non-code files (e.g. README.md) changed. Skipping deployment."
+          echo "SHOULD_DEPLOY=false" > /tmp/deploy_flag
+        fi
+      - |
+        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        if [ "$SHOULD_DEPLOY" = "true" ]; then
+          echo "Installing dependencies..."
+          npm install
+          echo "Running tests..."
+          npm test
+        fi
   build:
     commands:
-      - echo Build started on `date`
-      - echo Zipping deployment package...
-      - zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md"
+      - |
+        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        if [ "$SHOULD_DEPLOY" = "true" ]; then
+          echo "Build started on $(date)"
+          echo "Zipping deployment package..."
+          zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md" "test/*"
+        else
+          echo "Skipping build phase (documentation only change)."
+        fi
   post_build:
     commands:
-      - echo Checking branch for deployment target...
       - |
-        if [ "$CODEBUILD_WEBHOOK_TRIGGER" = "branch/main" ]; then
-          echo "Deploying to PRODUCTION environment (booth-freee-automator)..."
-          aws lambda update-function-code --function-name booth-freee-automator --zip-file fileb://deployment.zip
-        elif [ "$CODEBUILD_WEBHOOK_TRIGGER" = "branch/develop" ]; then
-          echo "Deploying to TEST environment (booth-freee-automator-test)..."
-          aws lambda update-function-code --function-name booth-freee-automator-test --zip-file fileb://deployment.zip
+        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        if [ "$SHOULD_DEPLOY" = "true" ]; then
+          echo "Checking branch for deployment target..."
+          TRIGGER="${CODEBUILD_WEBHOOK_TRIGGER:-branch/$CODEBUILD_SOURCE_VERSION}"
+          if [ "$TRIGGER" = "branch/main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ]; then
+            echo "Deploying to PRODUCTION environment (booth-freee-automator)..."
+            aws lambda update-function-code --function-name booth-freee-automator --zip-file fileb://deployment.zip
+          elif [ "$TRIGGER" = "branch/develop" ] || [ "$CODEBUILD_SOURCE_VERSION" = "develop" ]; then
+            echo "Deploying to TEST environment (booth-freee-automator-test)..."
+            aws lambda update-function-code --function-name booth-freee-automator-test --zip-file fileb://deployment.zip
+          else
+            echo "Skipping deployment for trigger: $TRIGGER (Source version: $CODEBUILD_SOURCE_VERSION)"
+          fi
+          echo "Deployment process finished on $(date)"
         else
-          echo "Skipping deployment for branch: $CODEBUILD_WEBHOOK_TRIGGER"
+          echo "Skipping deploy phase (documentation only change)."
         fi
-      - echo Deployment process finished on `date`
 
 artifacts:
   files:
