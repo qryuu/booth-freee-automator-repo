@@ -20,13 +20,13 @@ phases:
 
         if echo "$CHANGED_FILES" | grep -qE '^(index\.js|package\.json|package-lock\.json|buildspec\.yml|test/)'; then
           echo "Code changes detected. Proceeding with install, test and deploy."
-          echo "SHOULD_DEPLOY=true" > /tmp/deploy_flag
+          printf "true" > /tmp/deploy_flag
         else
           echo "Only non-code files (e.g. README.md) changed. Skipping deployment."
-          echo "SHOULD_DEPLOY=false" > /tmp/deploy_flag
+          printf "false" > /tmp/deploy_flag
         fi
       - |
-        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        SHOULD_DEPLOY=$(tr -d '\r\n ' < /tmp/deploy_flag)
         if [ "$SHOULD_DEPLOY" = "true" ]; then
           echo "Installing dependencies..."
           npm install
@@ -36,18 +36,19 @@ phases:
   build:
     commands:
       - |
-        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        SHOULD_DEPLOY=$(tr -d '\r\n ' < /tmp/deploy_flag)
         if [ "$SHOULD_DEPLOY" = "true" ]; then
           echo "Build started on $(date)"
           echo "Zipping deployment package..."
           zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md" "test/*"
         else
           echo "Skipping build phase (documentation only change)."
+          touch deployment.zip
         fi
   post_build:
     commands:
       - |
-        SHOULD_DEPLOY=$(cat /tmp/deploy_flag)
+        SHOULD_DEPLOY=$(tr -d '\r\n ' < /tmp/deploy_flag)
         if [ "$SHOULD_DEPLOY" = "true" ]; then
           echo "Checking branch for deployment target..."
           TRIGGER="${CODEBUILD_WEBHOOK_TRIGGER:-branch/$CODEBUILD_SOURCE_VERSION}"
