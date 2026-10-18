@@ -29,7 +29,7 @@ phases:
         SHOULD_DEPLOY=$(tr -d '\r\n ' < /tmp/deploy_flag)
         if [ "$SHOULD_DEPLOY" = "true" ]; then
           echo "Installing dependencies..."
-          npm install
+          npm ci
           echo "Running tests..."
           npm test
         fi
@@ -55,9 +55,11 @@ phases:
           if [ "$TRIGGER" = "branch/main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ]; then
             echo "Deploying to PRODUCTION environment (booth-freee-automator)..."
             aws lambda update-function-code --function-name booth-freee-automator --zip-file fileb://deployment.zip
+            aws lambda wait function-updated --function-name booth-freee-automator
           elif [ "$TRIGGER" = "branch/develop" ] || [ "$CODEBUILD_SOURCE_VERSION" = "develop" ]; then
             echo "Deploying to TEST environment (booth-freee-automator-test)..."
             aws lambda update-function-code --function-name booth-freee-automator-test --zip-file fileb://deployment.zip
+            aws lambda wait function-updated --function-name booth-freee-automator-test
           else
             echo "Skipping deployment for trigger: $TRIGGER (Source version: $CODEBUILD_SOURCE_VERSION)"
           fi

@@ -33,6 +33,17 @@ function formatOrderDate(dateString) {
 }
 
 /**
+ * 金額文字列を整数にパース。空は 0、不正値（NaN等）は null を返す
+ */
+function parseAmount(value) {
+    const cleaned = String(value ?? '').replace(/,/g, '').trim();
+    if (cleaned === '') return 0;
+    if (!/^-?\d+$/.test(cleaned)) return null;
+    const n = Number(cleaned);
+    return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
  * 'YYYY-MM-DD' 文字列の日付を前後にシフト（UTC基準でタイムゾーンズレを防止）
  */
 function shiftDateString(dateString, days) {
@@ -433,7 +444,7 @@ function renderUploadHtml() {
 
     function handleFile(file) {
         if (!file.name.toLowerCase().endsWith('.csv')) {
-            showResult('error', 'CSV形式のファイル（.csv）を選択してください。');
+            showResult('error', '', 'CSV形式のファイル（.csv）を選択してください。');
             return;
         }
         selectedFile = file;
@@ -464,12 +475,12 @@ function renderUploadHtml() {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'アップロードに失敗しました。');
-            showResult('success', '<strong>🎉 アップロード完了！</strong><br>' + data.message + '<br><small>数十秒後にfreeeの「BOOTH」口座をご確認ください。</small>');
+            showResult('success', '🎉 アップロード完了！', data.message, '数十秒後にfreeeの「BOOTH」口座をご確認ください。');
             selectedFile = null;
             filePreview.style.display = 'none';
             btnUpload.disabled = true;
         } catch (err) {
-            showResult('error', '<strong>⚠️ エラー:</strong> ' + err.message);
+            showResult('error', '⚠️ エラー:', err.message);
         } finally {
             setLoading(false);
         }
@@ -480,9 +491,20 @@ function renderUploadHtml() {
         spinner.style.display = isLoading ? 'inline-block' : 'none';
         btnText.textContent = isLoading ? 'アップロード処理中...' : 'freeeに自動記帳を開始する';
     }
-    function showResult(type, html) {
+    function showResult(type, title, message, note) {
         resultBox.className = 'result-box ' + type;
-        resultBox.innerHTML = html;
+        resultBox.replaceChildren();
+        if (title) {
+            const strong = document.createElement('strong');
+            strong.textContent = title;
+            resultBox.append(strong, document.createElement('br'));
+        }
+        resultBox.append(document.createTextNode(message));
+        if (note) {
+            const small = document.createElement('small');
+            small.textContent = note;
+            resultBox.append(document.createElement('br'), small);
+        }
         resultBox.style.display = 'block';
     }
     function hideResult() { resultBox.style.display = 'none'; }
@@ -620,18 +642,22 @@ exports.handler = async (event) => {
                     console.warn(`[INFO] 注文 ${orderId}: 手数料関連の項目が見つかりませんでした。0円として処理します。`);
                 }
                 
+                const parsedFee = parseAmount(feeString);
                 orders.set(orderId, {
                     items: [],
                     orderDate: record['注文日時'] || null,
-                    totalFee: Math.abs(parseInt(feeString.replace(/,/g, ''), 10)),
+                    totalFee: parsedFee === null ? null : Math.abs(parsedFee),
+                    hasInvalidAmount: parsedFee === null,
                 });
             }
 
             const currentOrder = orders.get(orderId);
+            const subtotal = parseAmount(record['小計']);
+            if (subtotal === null) currentOrder.hasInvalidAmount = true;
             currentOrder.items.push({
                 name: record['商品名'],
                 variation: record['バリエーション名'],
-                subtotal: parseInt(record['小計']?.replace(/,/g, '') || '0', 10),
+                subtotal: subtotal ?? 0,
             });
 
             // 2行目以降で日付が空の場合、同じ注文の最初の行の日付を引き継ぐ
@@ -660,6 +686,9 @@ exports.handler = async (event) => {
 
         const registeredOrderIds = [];
         const skippedOrderIds = [];
+        const failedOrderIds = [];
+        const invalidDateOrderIds = [];
+        const invalidAmountOrderIds = [];
 
         // 3. グループ化した注文ごとに処理を実行する
         for (const [orderId, orderDetails] of orders.entries()) {
@@ -668,6 +697,17 @@ exports.handler = async (event) => {
                 if (existingOrderIds.has(orderId)) {
                     console.log(`[DUPLICATE_SKIP] 注文番号: ${orderId} は既にfreeeに登録済みのためスキップします。`);
                     skippedOrderIds.push(orderId);
+                    continue;
+                }
+
+                // 金額が数値として不正な注文は freee に誤登録せずスキップ
+                if (orderDetails.hasInvalidAmount) {
+                    console.warn({
+                        level: 'WARN',
+                        message: '[手動登録推奨] 金額（小計または手数料）が数値として不正なため、この注文の登録をスキップしました。',
+                        orderId: orderId
+                    });
+                    invalidAmountOrderIds.push(orderId);
                     continue;
                 }
 
@@ -680,6 +720,7 @@ exports.handler = async (event) => {
                         orderId: orderId,
                         skipped_order: orderDetails
                     });
+                    invalidDateOrderIds.push(orderId);
                     continue;
                 }
                 
@@ -711,6 +752,7 @@ exports.handler = async (event) => {
                     error_details: error.message,
                     failed_order_id: orderId
                 });
+                failedOrderIds.push(orderId);
             }
         }
         
@@ -719,8 +761,14 @@ exports.handler = async (event) => {
             totalOrdersInCsv: orders.size,
             registeredCount: registeredOrderIds.length,
             skippedCount: skippedOrderIds.length,
+            failedCount: failedOrderIds.length,
+            invalidDateCount: invalidDateOrderIds.length,
+            invalidAmountCount: invalidAmountOrderIds.length,
             registeredOrderIds,
             skippedOrderIds,
+            failedOrderIds,
+            invalidDateOrderIds,
+            invalidAmountOrderIds,
         };
         console.log("=== Execution Summary ===", JSON.stringify(summary, null, 2));
 
@@ -737,6 +785,7 @@ module.exports = {
     handler: exports.handler,
     formatOrderDate,
     shiftDateString,
+    parseAmount,
     fetchExistingOrderIds,
     postToFreee,
     getFreeeIds,

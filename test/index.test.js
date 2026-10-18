@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatOrderDate, shiftDateString, fetchExistingOrderIds, postToFreee } = require('../index.js');
+const { formatOrderDate, shiftDateString, parseAmount, fetchExistingOrderIds, postToFreee } = require('../index.js');
 
 test('formatOrderDate: JSTの日付文字列から YYYY-MM-DD を抽出できる', () => {
     assert.equal(formatOrderDate('2026/10/01 12:34:56'), '2026-10-01');
@@ -163,6 +163,21 @@ test('handleHttpRequest: POST で空データ送信時は 400 エラーを返す
     assert.equal(response.statusCode, 400);
     const data = JSON.parse(response.body);
     assert.equal(data.success, false);
+});
+
+test('parseAmount: カンマ区切りを許容し、不正値は NaN ではなく null を返す', () => {
+    assert.equal(parseAmount('1,234'), 1234);
+    assert.equal(parseAmount('-500'), -500);
+    assert.equal(parseAmount(''), 0);
+    assert.equal(parseAmount(undefined), 0);
+    assert.equal(parseAmount('abc'), null);
+    assert.equal(parseAmount('12.5'), null);
+    assert.equal(parseAmount('¥1000'), null);
+});
+
+test('renderUploadHtml: 結果表示で innerHTML を使わない（XSS対策）', () => {
+    const { renderUploadHtml } = require('../index.js');
+    assert.ok(!renderUploadHtml().includes('innerHTML'));
 });
 
 test('csv-parse: Readable ストリームから BOM付きCSV を正常にパースできる (v7互換性検証)', async () => {
