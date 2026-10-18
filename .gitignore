@@ -19,3 +19,9 @@ HANDOFF*.md
 handoffs/
 scratch/
 
+# Kowloon Internal Operations (Not for public repo)
+tools/
+docs/
+local_ops/
+
+
