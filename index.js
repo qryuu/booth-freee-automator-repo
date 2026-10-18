@@ -603,9 +603,36 @@ async function handleHttpRequest(event) {
  * Lambdaハンドラ
  */
 exports.handler = async (event) => {
-    // Function URL / HTTP リクエストの処理
-    if (event.requestContext?.http) {
+    // 1. Function URL / HTTP リクエストの処理
+    if (event?.requestContext?.http) {
         return await handleHttpRequest(event);
+    }
+
+    // 2. EventBridge スケジュール起動（トークン自動延命）の処理
+    const isKeepAlive = Boolean(
+        event?.source === 'aws.events' ||
+        event?.['detail-type'] === 'Scheduled Event' ||
+        event?.action === 'keep_alive' ||
+        event?.action === 'refresh_token'
+    );
+
+    if (isKeepAlive) {
+        console.log('[KEEP_ALIVE] Scheduled token refresh event received.');
+        try {
+            const secrets = await getSecrets();
+            await refreshAccessToken(secrets);
+            console.log('[KEEP_ALIVE] Successfully refreshed access token and updated refresh token in Secrets Manager.');
+            return {
+                statusCode: 200,
+                body: JSON.stringify({ success: true, message: 'Token refreshed successfully for keep-alive.' })
+            };
+        } catch (error) {
+            console.error('[KEEP_ALIVE] Error refreshing token:', error);
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ success: false, message: 'Failed to refresh token during keep-alive.', error: error.message })
+            };
+        }
     }
 
     try {
@@ -801,4 +828,6 @@ module.exports = {
     parseCsvFromS3,
     renderUploadHtml,
     handleHttpRequest,
+    refreshAccessToken,
+    getSecrets,
 };
