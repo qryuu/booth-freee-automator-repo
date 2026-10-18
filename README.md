@@ -54,7 +54,7 @@
 
 ビルド済みのLambda関数 (`deployment.zip`) は、以下のリリースページからダウンロードできます。非エンジニアの方は、こちらをご利用ください。
 
-➡️ [**v1.6.0 (Webセルフアップロードポータル内蔵版) をダウンロード**](https://github.com/qryuu/booth-freee-automator-repo/releases/latest)
+➡️ [**v1.6.1 (堅牢化＆Webポータル内蔵版) をダウンロード**](https://github.com/qryuu/booth-freee-automator-repo/releases/latest)
 
 ---
 
