@@ -96,6 +96,18 @@ AWSの画面操作だけでセットアップを完了できる、丁寧なガ�
 
 ## 更新履歴
 
+* **v1.6.1** (2026-10-18)
+  * **金額パースのNaNガードおよび不正データ防御を強化。**
+    * 小計や手数料に不正な数値文字列が含まれる行を検知し、freeeへの誤登録（NaN/null送信）を防止して安全にスキップする `parseAmount` ロジックを導入。
+  * **実行結果サマリーの集計項目を拡充。**
+    * `failedCount`, `failedOrderIds`, `invalidDateOrderIds`, `invalidAmountOrderIds` を構造化サマリーに出力し、エラー検知と監査性を向上。
+  * **WebセルフアップロードポータルのDOM衛生化（XSS耐性強化）。**
+    * アップロード結果表示部を `innerHTML` から `replaceChildren()` および `textContent` による安全なDOM構築へ刷新。
+  * **CI/CDパイプラインおよびビルド再現性の最適化。**
+    * `buildspec.yml` のインストールコマンドを `npm ci`（package-lock.json完全準拠）に更新。
+    * Lambda更新直後に `aws lambda wait function-updated` によるデプロイ同期待機を追加。
+  * **インフラ層での並列競合遮断。**
+    * AWS Lambda（本番・テスト共）の予約同時実行数を `1` に設定し、複数ファイル同時アップロード時のリフレッシュトークン喪失および二重記帳競合を物理遮断。
 * **v1.6.0** (2026-10-04)
   * **Webセルフアップロードポータル機能を追加。**
   * Lambda Function URL（関数URL）による直接Web画面（HTML）返却およびドラッグ＆ドロップによる売上CSVアップロードに対応。
