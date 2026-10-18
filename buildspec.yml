@@ -40,7 +40,7 @@ phases:
         if [ "$SHOULD_DEPLOY" = "true" ]; then
           echo "Build started on $(date)"
           echo "Zipping deployment package..."
-          zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md" "test/*"
+          zip -r deployment.zip . -x "*.git*" "buildspec.yml" "*.md" "test/*" "tools/*" "scratch/*"
         else
           echo "Skipping build phase (documentation only change)."
           touch deployment.zip
