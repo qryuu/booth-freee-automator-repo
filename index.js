@@ -5,7 +5,7 @@ const { parse } = require('csv-parse');
 // 定数
 const SECRET_NAME = process.env.SECRET_NAME;
 const REGION = process.env.AWS_REGION || "ap-northeast-1";
-const UPLOAD_BUCKET_NAME = process.env.UPLOAD_BUCKET_NAME || "booth-freee-csv-upload-chocotip";
+const UPLOAD_BUCKET_NAME = process.env.UPLOAD_BUCKET_NAME;
 
 // オプショナル設定: 環境変数（またはSecrets Manager）から取得
 const PARTNER_NAME = process.env.PARTNER_NAME;
@@ -544,6 +544,15 @@ async function handleHttpRequest(event) {
                     statusCode: 400,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ success: false, message: 'CSVデータが空です。' })
+                };
+            }
+
+            if (!UPLOAD_BUCKET_NAME) {
+                console.error('[CRITICAL] 環境変数 UPLOAD_BUCKET_NAME が設定されていません。');
+                return {
+                    statusCode: 500,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ success: false, message: 'サーバー設定エラー: アップロード先S3バケットが未設定です。' })
                 };
             }
 

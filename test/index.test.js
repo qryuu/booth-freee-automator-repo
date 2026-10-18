@@ -180,6 +180,24 @@ test('renderUploadHtml: 結果表示で innerHTML を使わない（XSS対策）
     assert.ok(!renderUploadHtml().includes('innerHTML'));
 });
 
+test('handleHttpRequest: UPLOAD_BUCKET_NAME 未設定のPOST時は 500 エラーで安全停止する', async () => {
+    const originalBucket = process.env.UPLOAD_BUCKET_NAME;
+    delete process.env.UPLOAD_BUCKET_NAME;
+    try {
+        const { handleHttpRequest } = require('../index.js');
+        const event = {
+            requestContext: { http: { method: 'POST' } },
+            body: 'test,csv,data'
+        };
+        const response = await handleHttpRequest(event);
+        assert.equal(response.statusCode, 500);
+        const data = JSON.parse(response.body);
+        assert.equal(data.success, false);
+    } finally {
+        if (originalBucket) process.env.UPLOAD_BUCKET_NAME = originalBucket;
+    }
+});
+
 test('csv-parse: Readable ストリームから BOM付きCSV を正常にパースできる (v7互換性検証)', async () => {
     const { Readable } = require('node:stream');
     const { parse } = require('csv-parse');
