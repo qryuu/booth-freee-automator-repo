@@ -16,5 +16,6 @@ Thumbs.db
 secrets.json
 .env
 HANDOFF*.md
+handoffs/
 scratch/
 
