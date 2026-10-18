@@ -627,7 +627,7 @@ exports.handler = async (event) => {
                 body: JSON.stringify({ success: true, message: 'Token refreshed successfully for keep-alive.' })
             };
         } catch (error) {
-            console.error('[KEEP_ALIVE] Error refreshing token:', error);
+            console.error('[CRITICAL_ALARM][KEEP_ALIVE_FAILED] Failed to refresh token during keep-alive:', error);
             return {
                 statusCode: 500,
                 body: JSON.stringify({ success: false, message: 'Failed to refresh token during keep-alive.', error: error.message })

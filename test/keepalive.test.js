@@ -107,12 +107,22 @@ test.describe('keep-alive', { concurrency: 1 }, () => {
         assert.equal(body.success, true);
     });
 
-    test('freee API 失敗時は 500 を返しエラー内容をログ記録する', async (t) => {
+    test('freee API 失敗時は 500 を返し [CRITICAL_ALARM] をログ記録する', async (t) => {
         const originalFetch = global.fetch;
         const originalSend = SecretsManagerClient.prototype.send;
+        const originalConsoleError = console.error;
+        let loggedAlarm = false;
+        console.error = (...args) => {
+            const str = args.join(' ');
+            if (str.includes('[CRITICAL_ALARM][KEEP_ALIVE_FAILED]')) {
+                loggedAlarm = true;
+            }
+            originalConsoleError(...args);
+        };
         t.after(() => {
             global.fetch = originalFetch;
             SecretsManagerClient.prototype.send = originalSend;
+            console.error = originalConsoleError;
         });
 
         SecretsManagerClient.prototype.send = async () => ({
@@ -137,5 +147,6 @@ test.describe('keep-alive', { concurrency: 1 }, () => {
         const body = JSON.parse(response.body);
         assert.equal(body.success, false);
         assert.ok(body.message.includes('Failed to refresh token'));
+        assert.ok(loggedAlarm, 'CloudWatch アラーム用の [CRITICAL_ALARM] プレフィックスが出力されたこと');
     });
 });
